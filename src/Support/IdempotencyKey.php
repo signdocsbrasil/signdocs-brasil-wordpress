@@ -17,39 +17,41 @@ namespace SignDocsBrasil\WordPress\Support;
  * ID, signer email, etc.). Hashed with SHA-256 so the output looks
  * like an opaque token and doesn't leak any input.
  */
-final class IdempotencyKey
-{
-    /**
-     * @param array<int|string,int|string|null> $parts
-     */
-    public static function forAction(string $action, array $parts = []): string
-    {
-        $userId = 0;
-        if (function_exists('get_current_user_id')) {
-            $userId = (int) \get_current_user_id();
-        }
+final class IdempotencyKey {
 
-        $siteUrl = '';
-        if (function_exists('get_site_url')) {
-            $siteUrl = (string) \get_site_url();
-        }
+	/**
+	 * @param array<int|string,int|string|null> $parts
+	 */
+	public static function forAction( string $action, array $parts = array() ): string {
+		$userId = 0;
+		if ( function_exists( 'get_current_user_id' ) ) {
+			$userId = (int) \get_current_user_id();
+		}
 
-        $canonicalParts = [];
-        foreach ($parts as $k => $v) {
-            if ($v === null) {
-                continue;
-            }
-            $canonicalParts[] = $k . '=' . (string) $v;
-        }
-        sort($canonicalParts);
+		$siteUrl = '';
+		if ( function_exists( 'get_site_url' ) ) {
+			$siteUrl = (string) \get_site_url();
+		}
 
-        $material = implode('|', [
-            $siteUrl,
-            (string) $userId,
-            $action,
-            implode(';', $canonicalParts),
-        ]);
+		$canonicalParts = array();
+		foreach ( $parts as $k => $v ) {
+			if ( $v === null ) {
+				continue;
+			}
+			$canonicalParts[] = $k . '=' . (string) $v;
+		}
+		sort( $canonicalParts );
 
-        return 'sdb-wp-' . substr(hash('sha256', $material), 0, 32);
-    }
+		$material = implode(
+			'|',
+			array(
+				$siteUrl,
+				(string) $userId,
+				$action,
+				implode( ';', $canonicalParts ),
+			)
+		);
+
+		return 'sdb-wp-' . substr( hash( 'sha256', $material ), 0, 32 );
+	}
 }

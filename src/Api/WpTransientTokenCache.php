@@ -17,53 +17,49 @@ use SignDocsBrasil\Api\TokenCache\TokenCacheInterface;
  * safety margin — so the cache auto-evicts before the token can expire
  * mid-request.
  */
-final class WpTransientTokenCache implements TokenCacheInterface
-{
-    private const TRANSIENT_PREFIX = 'signdocs_oauth_';
-    private const SAFETY_MARGIN_SECONDS = 60;
+final class WpTransientTokenCache implements TokenCacheInterface {
 
-    public function get(string $key): ?CachedToken
-    {
-        $raw = \get_transient(self::transientKey($key));
-        if (!is_array($raw) || !isset($raw['accessToken'], $raw['expiresAt'])) {
-            return null;
-        }
+	private const TRANSIENT_PREFIX      = 'signdocs_oauth_';
+	private const SAFETY_MARGIN_SECONDS = 60;
 
-        return new CachedToken(
-            accessToken: (string) $raw['accessToken'],
-            expiresAt: (float) $raw['expiresAt'],
-        );
-    }
+	public function get( string $key ): ?CachedToken {
+		$raw = \get_transient( self::transientKey( $key ) );
+		if ( ! is_array( $raw ) || ! isset( $raw['accessToken'], $raw['expiresAt'] ) ) {
+			return null;
+		}
 
-    public function set(string $key, CachedToken $token): void
-    {
-        $ttl = (int) floor($token->expiresAt - microtime(true) - self::SAFETY_MARGIN_SECONDS);
-        if ($ttl <= 0) {
-            return;
-        }
+		return new CachedToken(
+			accessToken: (string) $raw['accessToken'],
+			expiresAt: (float) $raw['expiresAt'],
+		);
+	}
 
-        \set_transient(
-            self::transientKey($key),
-            [
-                'accessToken' => $token->accessToken,
-                'expiresAt' => $token->expiresAt,
-            ],
-            $ttl,
-        );
-    }
+	public function set( string $key, CachedToken $token ): void {
+		$ttl = (int) floor( $token->expiresAt - microtime( true ) - self::SAFETY_MARGIN_SECONDS );
+		if ( $ttl <= 0 ) {
+			return;
+		}
 
-    public function delete(string $key): void
-    {
-        \delete_transient(self::transientKey($key));
-    }
+		\set_transient(
+			self::transientKey( $key ),
+			array(
+				'accessToken' => $token->accessToken,
+				'expiresAt'   => $token->expiresAt,
+			),
+			$ttl,
+		);
+	}
 
-    /**
-     * Keep the transient name short (<=172 chars total) and free of
-     * characters that WP's transient infrastructure disallows. The
-     * SDK's key is already SHA-256-truncated, so we just prefix.
-     */
-    private static function transientKey(string $sdkKey): string
-    {
-        return self::TRANSIENT_PREFIX . substr($sdkKey, 0, 150);
-    }
+	public function delete( string $key ): void {
+		\delete_transient( self::transientKey( $key ) );
+	}
+
+	/**
+	 * Keep the transient name short (<=172 chars total) and free of
+	 * characters that WP's transient infrastructure disallows. The
+	 * SDK's key is already SHA-256-truncated, so we just prefix.
+	 */
+	private static function transientKey( string $sdkKey ): string {
+		return self::TRANSIENT_PREFIX . substr( $sdkKey, 0, 150 );
+	}
 }

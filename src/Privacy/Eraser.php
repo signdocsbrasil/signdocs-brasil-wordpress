@@ -17,69 +17,69 @@ namespace SignDocsBrasil\WordPress\Privacy;
  * local searchable link to the subject while leaving the server-side
  * audit trail intact.
  */
-final class Eraser
-{
-    public const ERASER_KEY = 'signdocs-brasil';
-    private const PAGE_SIZE = 100;
+final class Eraser {
 
-    /**
-     * @param array<string,array{eraser_friendly_name:string,callback:callable}> $erasers
-     * @return array<string,array{eraser_friendly_name:string,callback:callable}>
-     */
-    public static function register(array $erasers): array
-    {
-        $erasers[self::ERASER_KEY] = [
-            'eraser_friendly_name' => __('SignDocs Brasil — Signing Sessions', 'signdocs-brasil'),
-            'callback' => [self::class, 'erase'],
-        ];
-        return $erasers;
-    }
+	public const ERASER_KEY = 'signdocs-brasil';
+	private const PAGE_SIZE = 100;
 
-    /**
-     * @return array{items_removed:bool,items_retained:bool,messages:list<string>,done:bool}
-     */
-    public static function erase(string $email, int $page = 1): array
-    {
-        $offset = ($page - 1) * self::PAGE_SIZE;
-        $posts = \get_posts([
-            'post_type' => 'signdocs_signing',
-            'post_status' => 'any',
-            'numberposts' => self::PAGE_SIZE,
-            'offset' => $offset,
-            'meta_query' => [
-                [
-                    'key' => '_signdocs_signer_email',
-                    'value' => $email,
-                    'compare' => '=',
-                ],
-            ],
-        ]);
+	/**
+	 * @param array<string,array{eraser_friendly_name:string,callback:callable}> $erasers
+	 * @return array<string,array{eraser_friendly_name:string,callback:callable}>
+	 */
+	public static function register( array $erasers ): array {
+		$erasers[ self::ERASER_KEY ] = array(
+			'eraser_friendly_name' => __( 'SignDocs Brasil — Signing Sessions', 'signdocs-brasil' ),
+			'callback'             => array( self::class, 'erase' ),
+		);
+		return $erasers;
+	}
 
-        $itemsRetained = false;
-        $messages = [];
-        $token = substr(hash('sha256', $email), 0, 8);
-        $redactedEmail = '[redacted-' . $token . ']';
+	/**
+	 * @return array{items_removed:bool,items_retained:bool,messages:list<string>,done:bool}
+	 */
+	public static function erase( string $email, int $page = 1 ): array {
+		$offset = ( $page - 1 ) * self::PAGE_SIZE;
+		$posts  = \get_posts(
+			array(
+				'post_type'   => 'signdocs_signing',
+				'post_status' => 'any',
+				'numberposts' => self::PAGE_SIZE,
+				'offset'      => $offset,
+				'meta_query'  => array(
+					array(
+						'key'     => '_signdocs_signer_email',
+						'value'   => $email,
+						'compare' => '=',
+					),
+				),
+			)
+		);
 
-        foreach ($posts as $post) {
-            \update_post_meta($post->ID, '_signdocs_signer_email', $redactedEmail);
-            \update_post_meta($post->ID, '_signdocs_signer_name', '[redacted-' . $token . ']');
-            $itemsRetained = true;
-        }
+		$itemsRetained = false;
+		$messages      = array();
+		$token         = substr( hash( 'sha256', $email ), 0, 8 );
+		$redactedEmail = '[redacted-' . $token . ']';
 
-        if ($itemsRetained) {
-            $messages[] = __(
-                'SignDocs Brasil: signer identity redacted but evidence IDs and completion timestamps retained under the electronic-signature legal retention requirement.',
-                'signdocs-brasil',
-            );
-        }
+		foreach ( $posts as $post ) {
+			\update_post_meta( $post->ID, '_signdocs_signer_email', $redactedEmail );
+			\update_post_meta( $post->ID, '_signdocs_signer_name', '[redacted-' . $token . ']' );
+			$itemsRetained = true;
+		}
 
-        $done = count($posts) < self::PAGE_SIZE;
+		if ( $itemsRetained ) {
+			$messages[] = __(
+				'SignDocs Brasil: signer identity redacted but evidence IDs and completion timestamps retained under the electronic-signature legal retention requirement.',
+				'signdocs-brasil',
+			);
+		}
 
-        return [
-            'items_removed' => false,
-            'items_retained' => $itemsRetained,
-            'messages' => $messages,
-            'done' => $done,
-        ];
-    }
+		$done = count( $posts ) < self::PAGE_SIZE;
+
+		return array(
+			'items_removed'  => false,
+			'items_retained' => $itemsRetained,
+			'messages'       => $messages,
+			'done'           => $done,
+		);
+	}
 }

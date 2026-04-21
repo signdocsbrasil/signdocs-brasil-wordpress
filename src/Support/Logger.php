@@ -13,34 +13,32 @@ namespace SignDocsBrasil\WordPress\Support;
  * Never logs: access tokens, client secrets, webhook secrets, or raw
  * signer PII — callers are expected to redact before passing `context`.
  */
-final class Logger
-{
-    public const LEVEL_DEBUG = 'debug';
-    public const LEVEL_INFO = 'info';
-    public const LEVEL_WARNING = 'warning';
-    public const LEVEL_ERROR = 'error';
+final class Logger {
 
-    private const CRON_HOOK = 'signdocs_prune_logs';
-    private const RETENTION_DAYS = 30;
+	public const LEVEL_DEBUG   = 'debug';
+	public const LEVEL_INFO    = 'info';
+	public const LEVEL_WARNING = 'warning';
+	public const LEVEL_ERROR   = 'error';
 
-    public static function tableName(): string
-    {
-        global $wpdb;
-        return $wpdb->prefix . 'signdocs_log';
-    }
+	private const CRON_HOOK      = 'signdocs_prune_logs';
+	private const RETENTION_DAYS = 30;
 
-    /**
-     * Create the log table on plugin activation. Idempotent via dbDelta.
-     */
-    public static function installSchema(): void
-    {
-        global $wpdb;
-        $table = self::tableName();
-        $charset = $wpdb->get_charset_collate();
+	public static function tableName(): string {
+		global $wpdb;
+		return $wpdb->prefix . 'signdocs_log';
+	}
 
-        require_once ABSPATH . 'wp-admin/includes/upgrade.php';
+	/**
+	 * Create the log table on plugin activation. Idempotent via dbDelta.
+	 */
+	public static function installSchema(): void {
+		global $wpdb;
+		$table   = self::tableName();
+		$charset = $wpdb->get_charset_collate();
 
-        $sql = "CREATE TABLE {$table} (
+		require_once ABSPATH . 'wp-admin/includes/upgrade.php';
+
+		$sql = "CREATE TABLE {$table} (
             id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
             event_type VARCHAR(64) NOT NULL DEFAULT '',
             level VARCHAR(16) NOT NULL DEFAULT 'info',
@@ -53,97 +51,93 @@ final class Logger
             KEY idx_level (level)
         ) {$charset};";
 
-        \dbDelta($sql);
+		\dbDelta( $sql );
 
-        if (!\wp_next_scheduled(self::CRON_HOOK)) {
-            \wp_schedule_event(time() + 3600, 'daily', self::CRON_HOOK);
-        }
-    }
+		if ( ! \wp_next_scheduled( self::CRON_HOOK ) ) {
+			\wp_schedule_event( time() + 3600, 'daily', self::CRON_HOOK );
+		}
+	}
 
-    public static function dropSchema(): void
-    {
-        global $wpdb;
-        $table = self::tableName();
-        $wpdb->query("DROP TABLE IF EXISTS {$table}");
+	public static function dropSchema(): void {
+		global $wpdb;
+		$table = self::tableName();
+		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- $table is $wpdb->prefix + plugin-owned constant, never user input.
+		$wpdb->query( "DROP TABLE IF EXISTS {$table}" );
 
-        $timestamp = \wp_next_scheduled(self::CRON_HOOK);
-        if ($timestamp !== false) {
-            \wp_unschedule_event($timestamp, self::CRON_HOOK);
-        }
-    }
+		$timestamp = \wp_next_scheduled( self::CRON_HOOK );
+		if ( $timestamp !== false ) {
+			\wp_unschedule_event( $timestamp, self::CRON_HOOK );
+		}
+	}
 
-    /**
-     * Daily cron callback — keeps only the last RETENTION_DAYS entries.
-     */
-    public static function prune(): void
-    {
-        global $wpdb;
-        $table = self::tableName();
-        $wpdb->query(
-            $wpdb->prepare(
-                "DELETE FROM {$table} WHERE created_at < DATE_SUB(NOW(), INTERVAL %d DAY)",
-                self::RETENTION_DAYS,
-            )
-        );
-    }
+	/**
+	 * Daily cron callback — keeps only the last RETENTION_DAYS entries.
+	 */
+	public static function prune(): void {
+		global $wpdb;
+		$table = self::tableName();
+		// $table is $wpdb->prefix + plugin-owned constant; retention-days uses %d placeholder.
+		$wpdb->query(
+			$wpdb->prepare(
+				// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+				"DELETE FROM {$table} WHERE created_at < DATE_SUB(NOW(), INTERVAL %d DAY)",
+				self::RETENTION_DAYS,
+			)
+		);
+	}
 
-    /**
-     * @param array<string,mixed> $context
-     */
-    public static function debug(string $eventType, string $message, array $context = []): void
-    {
-        self::log(self::LEVEL_DEBUG, $eventType, $message, $context);
-    }
+	/**
+	 * @param array<string,mixed> $context
+	 */
+	public static function debug( string $eventType, string $message, array $context = array() ): void {
+		self::log( self::LEVEL_DEBUG, $eventType, $message, $context );
+	}
 
-    /**
-     * @param array<string,mixed> $context
-     */
-    public static function info(string $eventType, string $message, array $context = []): void
-    {
-        self::log(self::LEVEL_INFO, $eventType, $message, $context);
-    }
+	/**
+	 * @param array<string,mixed> $context
+	 */
+	public static function info( string $eventType, string $message, array $context = array() ): void {
+		self::log( self::LEVEL_INFO, $eventType, $message, $context );
+	}
 
-    /**
-     * @param array<string,mixed> $context
-     */
-    public static function warning(string $eventType, string $message, array $context = []): void
-    {
-        self::log(self::LEVEL_WARNING, $eventType, $message, $context);
-    }
+	/**
+	 * @param array<string,mixed> $context
+	 */
+	public static function warning( string $eventType, string $message, array $context = array() ): void {
+		self::log( self::LEVEL_WARNING, $eventType, $message, $context );
+	}
 
-    /**
-     * @param array<string,mixed> $context
-     */
-    public static function error(string $eventType, string $message, array $context = []): void
-    {
-        self::log(self::LEVEL_ERROR, $eventType, $message, $context);
-    }
+	/**
+	 * @param array<string,mixed> $context
+	 */
+	public static function error( string $eventType, string $message, array $context = array() ): void {
+		self::log( self::LEVEL_ERROR, $eventType, $message, $context );
+	}
 
-    /**
-     * @param array<string,mixed> $context
-     */
-    public static function log(string $level, string $eventType, string $message, array $context = []): void
-    {
-        if (function_exists('error_log')) {
-            $serialized = $context === [] ? '' : ' ' . wp_json_encode($context);
-            error_log(sprintf('[signdocs/%s] %s %s%s', $level, $eventType, $message, $serialized));
-        }
+	/**
+	 * @param array<string,mixed> $context
+	 */
+	public static function log( string $level, string $eventType, string $message, array $context = array() ): void {
+		if ( function_exists( 'error_log' ) ) {
+			$serialized = $context === array() ? '' : ' ' . wp_json_encode( $context );
+			error_log( sprintf( '[signdocs/%s] %s %s%s', $level, $eventType, $message, $serialized ) );
+		}
 
-        if (!isset($GLOBALS['wpdb'])) {
-            return;
-        }
-        global $wpdb;
+		if ( ! isset( $GLOBALS['wpdb'] ) ) {
+			return;
+		}
+		global $wpdb;
 
-        $wpdb->insert(
-            self::tableName(),
-            [
-                'event_type' => substr($eventType, 0, 64),
-                'level' => substr($level, 0, 16),
-                'message' => substr($message, 0, 255),
-                'context' => $context === [] ? null : wp_json_encode($context),
-                'created_at' => gmdate('Y-m-d H:i:s'),
-            ],
-            ['%s', '%s', '%s', '%s', '%s']
-        );
-    }
+		$wpdb->insert(
+			self::tableName(),
+			array(
+				'event_type' => substr( $eventType, 0, 64 ),
+				'level'      => substr( $level, 0, 16 ),
+				'message'    => substr( $message, 0, 255 ),
+				'context'    => $context === array() ? null : wp_json_encode( $context ),
+				'created_at' => gmdate( 'Y-m-d H:i:s' ),
+			),
+			array( '%s', '%s', '%s', '%s', '%s' )
+		);
+	}
 }

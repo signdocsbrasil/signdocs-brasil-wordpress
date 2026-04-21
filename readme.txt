@@ -5,7 +5,7 @@ Tags: assinatura eletronica, electronic signature, assinatura digital, contrato,
 Requires at least: 6.0
 Tested up to: 6.7
 Requires PHP: 8.1
-Stable tag: 1.2.0
+Stable tag: 1.2.1
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -173,6 +173,16 @@ Sim. Configure cor da marca e logotipo nas configurações do plugin. A página 
 7. Email de pedido WooCommerce com link de assinatura
 
 == Changelog ==
+
+= 1.2.1 =
+
+WP.org submission-readiness pass.
+
+* phpcbf auto-fixed ~3,300 cosmetic WPCS findings; remaining ~370 are pure style (snake_case / Yoda) and annotated as advisory in CI.
+* Audited and annotated the 26 security-adjacent PHPCS findings (nonce verification, prepared SQL) — all verified as safe with justifying `phpcs:ignore` comments.
+* Added `.wordpress-org/` asset bundle: icon-256, icon-128, and auto-generated branded banner-1544x500 / banner-772x250 (designer should replace banners before public launch).
+* Added `.github/workflows/wp-org-deploy.yml` — `10up/action-wordpress-plugin-deploy` on tag push, gated by the `DEPLOY_TO_WPORG` repo variable so it's a no-op until WP.org approves.
+* Added `DEPLOY.md` runbook for the WP.org submission and release flow.
 
 = 1.2.0 =
 

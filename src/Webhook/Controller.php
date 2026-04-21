@@ -21,131 +21,147 @@ use SignDocsBrasil\WordPress\Support\Logger;
  *    200 deduped — the delivery succeeded from the server's view).
  * 4. Input-shape guard in the dispatcher (see EventRouter::isSafeId).
  */
-final class Controller
-{
-    private const NAMESPACE_ROUTE = 'signdocs/v1';
-    private const WEBHOOK_ROUTE = '/webhook';
-    private const TIMESTAMP_DRIFT_SECONDS = 300;
-    private const DEDUP_TTL_SECONDS = 604800; // 7 days
-    private const DEDUP_TRANSIENT_PREFIX = 'signdocs_wh_';
+final class Controller {
 
-    /** @var callable():(string|list<string>) */
-    private $secretResolver;
+	private const NAMESPACE_ROUTE         = 'signdocs/v1';
+	private const WEBHOOK_ROUTE           = '/webhook';
+	private const TIMESTAMP_DRIFT_SECONDS = 300;
+	private const DEDUP_TTL_SECONDS       = 604800; // 7 days
+	private const DEDUP_TRANSIENT_PREFIX  = 'signdocs_wh_';
 
-    private EventRouter $router;
+	/** @var callable():(string|list<string>) */
+	private $secretResolver;
 
-    /**
-     * @param callable():(string|list<string>) $secretResolver Returns either a single
-     *     decrypted secret (v1.1.0 compat) or a list of decrypted secrets (v1.2.0+,
-     *     to support rotation with an active grace window).
-     */
-    public function __construct(callable $secretResolver, ?EventRouter $router = null)
-    {
-        $this->secretResolver = $secretResolver;
-        $this->router = $router ?? new EventRouter();
-    }
+	private EventRouter $router;
 
-    public function register(): void
-    {
-        \add_action('rest_api_init', [$this, 'registerRoute']);
-    }
+	/**
+	 * @param callable():(string|list<string>) $secretResolver Returns either a single
+	 *     decrypted secret (v1.1.0 compat) or a list of decrypted secrets (v1.2.0+,
+	 *     to support rotation with an active grace window).
+	 */
+	public function __construct( callable $secretResolver, ?EventRouter $router = null ) {
+		$this->secretResolver = $secretResolver;
+		$this->router         = $router ?? new EventRouter();
+	}
 
-    public function registerRoute(): void
-    {
-        \register_rest_route(self::NAMESPACE_ROUTE, self::WEBHOOK_ROUTE, [
-            'methods' => 'POST',
-            'callback' => [$this, 'handle'],
-            'permission_callback' => [$this, 'authorize'],
-        ]);
-    }
+	public function register(): void {
+		\add_action( 'rest_api_init', array( $this, 'registerRoute' ) );
+	}
 
-    /**
-     * The REST authorize callback. Runs BEFORE `handle`. On true, WP
-     * will invoke the callback; on false/WP_Error, WP returns the
-     * error directly.
-     *
-     * This is where timestamp drift + HMAC + dedup all happen, so a
-     * replay flood never reaches any business logic.
-     */
-    public function authorize(\WP_REST_Request $request): bool|\WP_Error
-    {
-        $signature = (string) $request->get_header('X-SignDocs-Signature');
-        $timestamp = (string) $request->get_header('X-SignDocs-Timestamp');
-        $webhookId = (string) $request->get_header('X-SignDocs-Webhook-Id');
-        $body = (string) $request->get_body();
+	public function registerRoute(): void {
+		\register_rest_route(
+			self::NAMESPACE_ROUTE,
+			self::WEBHOOK_ROUTE,
+			array(
+				'methods'             => 'POST',
+				'callback'            => array( $this, 'handle' ),
+				'permission_callback' => array( $this, 'authorize' ),
+			)
+		);
+	}
 
-        // Defence-in-depth timestamp drift check (the SDK also enforces this).
-        if ($timestamp === '' || !ctype_digit(ltrim($timestamp, '-'))) {
-            return new \WP_Error('signdocs_bad_timestamp', 'Invalid timestamp header', ['status' => 400]);
-        }
-        $drift = abs(time() - (int) $timestamp);
-        if ($drift > self::TIMESTAMP_DRIFT_SECONDS) {
-            Logger::warning('webhook.drift', 'Rejected webhook with excessive clock drift', [
-                'drift' => $drift,
-                'webhookId' => $webhookId,
-            ]);
-            return new \WP_Error('signdocs_timestamp_drift', 'Timestamp outside acceptable window', ['status' => 400]);
-        }
+	/**
+	 * The REST authorize callback. Runs BEFORE `handle`. On true, WP
+	 * will invoke the callback; on false/WP_Error, WP returns the
+	 * error directly.
+	 *
+	 * This is where timestamp drift + HMAC + dedup all happen, so a
+	 * replay flood never reaches any business logic.
+	 */
+	public function authorize( \WP_REST_Request $request ): bool|\WP_Error {
+		$signature = (string) $request->get_header( 'X-SignDocs-Signature' );
+		$timestamp = (string) $request->get_header( 'X-SignDocs-Timestamp' );
+		$webhookId = (string) $request->get_header( 'X-SignDocs-Webhook-Id' );
+		$body      = (string) $request->get_body();
 
-        // HMAC verification via SDK's constant-time WebhookVerifier.
-        // During a webhook-secret rotation grace window, `$secrets` may
-        // contain both the new and the previous secret; accept either.
-        $raw = ($this->secretResolver)();
-        $secrets = is_array($raw) ? array_values(array_filter($raw, static fn($s) => is_string($s) && $s !== '')) : ($raw === '' ? [] : [$raw]);
-        if ($secrets === []) {
-            return new \WP_Error('signdocs_no_secret', 'Webhook secret not configured', ['status' => 500]);
-        }
+		// Defence-in-depth timestamp drift check (the SDK also enforces this).
+		if ( $timestamp === '' || ! ctype_digit( ltrim( $timestamp, '-' ) ) ) {
+			return new \WP_Error( 'signdocs_bad_timestamp', 'Invalid timestamp header', array( 'status' => 400 ) );
+		}
+		$drift = abs( time() - (int) $timestamp );
+		if ( $drift > self::TIMESTAMP_DRIFT_SECONDS ) {
+			Logger::warning(
+				'webhook.drift',
+				'Rejected webhook with excessive clock drift',
+				array(
+					'drift'     => $drift,
+					'webhookId' => $webhookId,
+				)
+			);
+			return new \WP_Error( 'signdocs_timestamp_drift', 'Timestamp outside acceptable window', array( 'status' => 400 ) );
+		}
 
-        $accepted = false;
-        foreach ($secrets as $secret) {
-            if (WebhookVerifier::verify(body: $body, signatureHeader: $signature, timestampHeader: $timestamp, secret: $secret)) {
-                $accepted = true;
-                break;
-            }
-        }
-        if (!$accepted) {
-            Logger::warning('webhook.invalid_signature', 'Rejected webhook with invalid HMAC', [
-                'webhookId' => $webhookId,
-                'candidatesTried' => count($secrets),
-            ]);
-            return new \WP_Error('signdocs_bad_signature', 'Invalid signature', ['status' => 401]);
-        }
+		// HMAC verification via SDK's constant-time WebhookVerifier.
+		// During a webhook-secret rotation grace window, `$secrets` may
+		// contain both the new and the previous secret; accept either.
+		$raw     = ( $this->secretResolver )();
+		$secrets = is_array( $raw ) ? array_values( array_filter( $raw, static fn( $s ) => is_string( $s ) && $s !== '' ) ) : ( $raw === '' ? array() : array( $raw ) );
+		if ( $secrets === array() ) {
+			return new \WP_Error( 'signdocs_no_secret', 'Webhook secret not configured', array( 'status' => 500 ) );
+		}
 
-        // Dedup: store the webhook ID so a re-delivery short-circuits.
-        // The caller's `handle()` reads this same key to detect dupes.
-        // If no webhook ID header is present (shouldn't happen with
-        // modern deliveries), we skip dedup rather than reject.
-        if ($webhookId !== '') {
-            $request->set_param('signdocs_webhook_id', $webhookId);
-        }
+		$accepted = false;
+		foreach ( $secrets as $secret ) {
+			if ( WebhookVerifier::verify( body: $body, signatureHeader: $signature, timestampHeader: $timestamp, secret: $secret ) ) {
+				$accepted = true;
+				break;
+			}
+		}
+		if ( ! $accepted ) {
+			Logger::warning(
+				'webhook.invalid_signature',
+				'Rejected webhook with invalid HMAC',
+				array(
+					'webhookId'       => $webhookId,
+					'candidatesTried' => count( $secrets ),
+				)
+			);
+			return new \WP_Error( 'signdocs_bad_signature', 'Invalid signature', array( 'status' => 401 ) );
+		}
 
-        return true;
-    }
+		// Dedup: store the webhook ID so a re-delivery short-circuits.
+		// The caller's `handle()` reads this same key to detect dupes.
+		// If no webhook ID header is present (shouldn't happen with
+		// modern deliveries), we skip dedup rather than reject.
+		if ( $webhookId !== '' ) {
+			$request->set_param( 'signdocs_webhook_id', $webhookId );
+		}
 
-    public function handle(\WP_REST_Request $request): \WP_REST_Response
-    {
-        \nocache_headers();
+		return true;
+	}
 
-        $webhookId = (string) $request->get_param('signdocs_webhook_id');
-        if ($webhookId !== '') {
-            $transientKey = self::DEDUP_TRANSIENT_PREFIX . substr($webhookId, 0, 150);
-            if (\get_transient($transientKey) !== false) {
-                return new \WP_REST_Response(['received' => true, 'deduped' => true], 200);
-            }
-            \set_transient($transientKey, 1, self::DEDUP_TTL_SECONDS);
-        }
+	public function handle( \WP_REST_Request $request ): \WP_REST_Response {
+		\nocache_headers();
 
-        $payload = json_decode((string) $request->get_body(), true);
-        if (!is_array($payload)) {
-            return new \WP_REST_Response(['error' => 'Invalid JSON'], 400);
-        }
+		$webhookId = (string) $request->get_param( 'signdocs_webhook_id' );
+		if ( $webhookId !== '' ) {
+			$transientKey = self::DEDUP_TRANSIENT_PREFIX . substr( $webhookId, 0, 150 );
+			if ( \get_transient( $transientKey ) !== false ) {
+				return new \WP_REST_Response(
+					array(
+						'received' => true,
+						'deduped'  => true,
+					),
+					200
+				);
+			}
+			\set_transient( $transientKey, 1, self::DEDUP_TTL_SECONDS );
+		}
 
-        $result = $this->router->route($payload);
+		$payload = json_decode( (string) $request->get_body(), true );
+		if ( ! is_array( $payload ) ) {
+			return new \WP_REST_Response( array( 'error' => 'Invalid JSON' ), 400 );
+		}
 
-        return new \WP_REST_Response([
-            'received' => true,
-            'matched' => $result['matched'],
-            'handled' => $result['handled'],
-        ], 200);
-    }
+		$result = $this->router->route( $payload );
+
+		return new \WP_REST_Response(
+			array(
+				'received' => true,
+				'matched'  => $result['matched'],
+				'handled'  => $result['handled'],
+			),
+			200
+		);
+	}
 }

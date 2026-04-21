@@ -1,0 +1,64 @@
+name: Deploy to WordPress.org
+
+# Syncs tagged releases (v*) from this GitHub repo to the
+# WordPress.org plugin SVN repo at plugins.svn.wordpress.org/signdocs-brasil/.
+# Also publishes the assets in .wordpress-org/ to the SVN /assets/ folder.
+#
+# Gated by the DEPLOY_TO_WPORG repo variable — so this workflow is a
+# no-op until the WP.org review team approves the plugin and the variable
+# is flipped to "true". See DEPLOY.md for the activation runbook.
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: Sync tag to WordPress.org SVN
+    runs-on: ubuntu-latest
+    # Only run once WP.org has approved the plugin and the repo variable
+    # has been flipped. Set via:
+    #   gh variable set DEPLOY_TO_WPORG --body true -R signdocsbrasil/signdocs-brasil-wordpress
+    if: ${{ vars.DEPLOY_TO_WPORG == 'true' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          tools: composer:v2
+          coverage: none
+
+      - name: Install production deps
+        run: composer install --no-dev --classmap-authoritative --optimize-autoloader --no-progress --no-interaction
+
+      - name: Remove dev / CI files from what gets pushed to SVN
+        run: |
+          rm -rf tests phpunit.xml.dist phpcs.xml.dist phpstan.neon.dist .github .gitignore composer.lock CLAUDE.md
+
+      - name: WordPress Plugin Deploy
+        uses: 10up/action-wordpress-plugin-deploy@stable
+        with:
+          # SVN slug is fixed once WP.org assigns it. Matches the plugin's
+          # Text Domain and the `Stable tag:` in readme.txt.
+          generate-zip: true
+        env:
+          SVN_USERNAME: ${{ secrets.SVN_USERNAME }}
+          SVN_PASSWORD: ${{ secrets.SVN_PASSWORD }}
+          SLUG: signdocs-brasil
+          BUILD_DIR: ${{ github.workspace }}
+          ASSETS_DIR: .wordpress-org
+
+      - name: Attach zip to GitHub Release
+        if: ${{ startsWith(github.ref, 'refs/tags/v') }}
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ github.workspace }}/${{ github.event.repository.name }}.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
