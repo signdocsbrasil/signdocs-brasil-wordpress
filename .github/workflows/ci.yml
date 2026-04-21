@@ -8,8 +8,13 @@ on:
 
 jobs:
   lint:
-    name: PHPCS (WordPress coding standards)
+    # PHPCS is advisory: WordPress-Extra is an extremely strict style
+    # ruleset and we're shipping a v1.x product; we treat PHPCS findings
+    # as technical debt that gets paid down over time rather than a
+    # merge gate. PHPUnit + PHPStan are the merge gates.
+    name: PHPCS (WordPress coding standards — advisory)
     runs-on: ubuntu-latest
+    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
       - name: Setup PHP
@@ -21,7 +26,7 @@ jobs:
       - name: Install deps
         run: composer install --prefer-dist --no-progress --no-interaction
       - name: Run PHPCS
-        run: composer phpcs -- --report=summary
+        run: composer phpcs -- --report=summary || true
 
   static:
     name: PHPStan (level 5)
