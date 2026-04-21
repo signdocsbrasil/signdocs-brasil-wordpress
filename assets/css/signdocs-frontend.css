@@ -1,0 +1,76 @@
+.signdocs-signing-widget {
+    margin: 1em 0;
+}
+
+.signdocs-form {
+    margin-bottom: 1em;
+}
+
+.signdocs-form p {
+    margin-bottom: 0.5em;
+}
+
+.signdocs-form label {
+    display: block;
+    font-weight: 600;
+    margin-bottom: 0.25em;
+    font-size: 0.875em;
+}
+
+.signdocs-form input[type="text"],
+.signdocs-form input[type="email"] {
+    width: 100%;
+    max-width: 400px;
+    padding: 8px 12px;
+    border: 1px solid #8c8f94;
+    border-radius: 4px;
+    font-size: 1em;
+    box-sizing: border-box;
+}
+
+.signdocs-form input:focus {
+    border-color: #0066FF;
+    outline: none;
+    box-shadow: 0 0 0 1px #0066FF;
+}
+
+.signdocs-sign-btn {
+    display: inline-block;
+    padding: 12px 24px;
+    background-color: #0066FF;
+    color: #fff;
+    border: none;
+    border-radius: 4px;
+    font-size: 1em;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.signdocs-sign-btn:hover {
+    background-color: #0052cc;
+}
+
+.signdocs-sign-btn:disabled {
+    background-color: #8c8f94;
+    cursor: not-allowed;
+}
+
+.signdocs-status {
+    margin-top: 0.75em;
+    padding: 8px 12px;
+    border-radius: 4px;
+    font-size: 0.875em;
+}
+
+.signdocs-status--success {
+    background-color: #edfaef;
+    color: #00703c;
+    border: 1px solid #00a32a;
+}
+
+.signdocs-status--error {
+    background-color: #fcf0f1;
+    color: #8a1f24;
+    border: 1px solid #d63638;
+}

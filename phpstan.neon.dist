@@ -1,0 +1,17 @@
+includes:
+    - vendor/szepeviktor/phpstan-wordpress/extension.neon
+parameters:
+    level: 5
+    # WordPress core return types are often specified more restrictively
+    # in phpstan-wordpress than reality (e.g. wp_insert_post is int|WP_Error
+    # but typed as int<1, max>). Treating PHPDoc types as uncertain lets
+    # defensive runtime guards coexist with the stubs.
+    treatPhpDocTypesAsCertain: false
+    paths:
+        - src
+    excludePaths:
+        - src/Cli/*
+    bootstrapFiles:
+        - vendor/autoload.php
+    ignoreErrors:
+        # (empty — add as needed)

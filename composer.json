@@ -1,0 +1,52 @@
+{
+    "name": "signdocs-brasil/signdocs-wordpress",
+    "description": "WordPress plugin for SignDocs Brasil electronic signatures",
+    "type": "wordpress-plugin",
+    "license": "GPL-2.0-or-later",
+    "require": {
+        "php": "^8.1",
+        "signdocs-brasil/signdocs-brasil-php": "^1.3"
+    },
+    "require-dev": {
+        "phpunit/phpunit": "^10.0",
+        "brain/monkey": "^2.6",
+        "mockery/mockery": "^1.6",
+        "yoast/phpunit-polyfills": "^2.0",
+        "phpstan/phpstan": "^1.12",
+        "szepeviktor/phpstan-wordpress": "^1.3",
+        "squizlabs/php_codesniffer": "^3.10",
+        "wp-coding-standards/wpcs": "^3.1",
+        "phpcompatibility/phpcompatibility-wp": "^2.1",
+        "dealerdirect/phpcodesniffer-composer-installer": "^1.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "SignDocsBrasil\\WordPress\\": "src/"
+        },
+        "classmap": [
+            "includes/"
+        ]
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "SignDocsBrasil\\WordPress\\Tests\\": "tests/"
+        }
+    },
+    "config": {
+        "optimize-autoloader": true,
+        "sort-packages": true,
+        "allow-plugins": {
+            "dealerdirect/phpcodesniffer-composer-installer": true
+        },
+        "audit": {
+            "abandoned": "report",
+            "block-insecure": false
+        }
+    },
+    "scripts": {
+        "test": "phpunit",
+        "phpstan": "phpstan analyse src --level=6 --memory-limit=512M",
+        "phpcs": "phpcs --standard=phpcs.xml.dist src",
+        "phpcbf": "phpcbf --standard=phpcs.xml.dist src"
+    }
+}

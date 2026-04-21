@@ -1,0 +1,46 @@
+{
+    "$schema": "https://schemas.wp.org/trunk/block.json",
+    "apiVersion": 3,
+    "name": "signdocs-brasil/signing-button",
+    "version": "1.0.0",
+    "title": "SignDocs Assinatura",
+    "category": "widgets",
+    "icon": "media-document",
+    "description": "Botão de assinatura eletrônica via SignDocs Brasil.",
+    "textdomain": "signdocs-brasil",
+    "attributes": {
+        "document_id": {
+            "type": "number",
+            "default": 0
+        },
+        "policy": {
+            "type": "string",
+            "default": ""
+        },
+        "locale": {
+            "type": "string",
+            "default": ""
+        },
+        "mode": {
+            "type": "string",
+            "default": ""
+        },
+        "button_text": {
+            "type": "string",
+            "default": "Assinar Documento"
+        },
+        "return_url": {
+            "type": "string",
+            "default": ""
+        },
+        "show_form": {
+            "type": "string",
+            "default": "false"
+        }
+    },
+    "supports": {
+        "html": false,
+        "align": true
+    },
+    "editorScript": "file:./index.js"
+}

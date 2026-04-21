@@ -1,0 +1,153 @@
+<?php
+
+defined('ABSPATH') || exit;
+
+use SignDocsBrasil\Api\Models\CreateSigningSessionRequest;
+
+/**
+ * AJAX handler for creating signing sessions from the frontend.
+ */
+final class Signdocs_Ajax
+{
+    private const MAX_FILE_SIZE = 15 * 1024 * 1024; // 15 MB
+
+    public function register(): void
+    {
+        add_action('wp_ajax_signdocs_create_session', [$this, 'handle_create_session']);
+        add_action('wp_ajax_nopriv_signdocs_create_session', [$this, 'handle_create_session_nopriv']);
+    }
+
+    public function handle_create_session(): void
+    {
+        check_ajax_referer('signdocs_create_session', 'nonce');
+
+        if (!current_user_can('edit_posts')) {
+            wp_send_json_error(['message' => __('Permissão insuficiente.', 'signdocs-brasil')], 403);
+        }
+
+        $this->create_session('shortcode');
+    }
+
+    public function handle_create_session_nopriv(): void
+    {
+        if (!get_option('signdocs_allow_anonymous', false)) {
+            wp_send_json_error(['message' => __('Assinatura anônima não permitida.', 'signdocs-brasil')], 403);
+        }
+
+        check_ajax_referer('signdocs_create_session', 'nonce');
+
+        // Rate limiting: 5 requests per IP per hour
+        $ip = sanitize_text_field($_SERVER['REMOTE_ADDR'] ?? '');
+        $transient_key = 'signdocs_rate_' . md5($ip);
+        $count = (int) get_transient($transient_key);
+        if ($count >= 5) {
+            wp_send_json_error(['message' => __('Limite de requisições excedido. Tente novamente em breve.', 'signdocs-brasil')], 429);
+        }
+        set_transient($transient_key, $count + 1, HOUR_IN_SECONDS);
+
+        $this->create_session('anonymous');
+    }
+
+    private function create_session(string $source): void
+    {
+        $client = Signdocs_Client_Factory::get_client();
+        if ($client === null) {
+            wp_send_json_error(['message' => __('Plugin não configurado. Verifique as credenciais da API.', 'signdocs-brasil')]);
+        }
+
+        // Validate required fields
+        $document_id = absint($_POST['document_id'] ?? 0);
+        $signer_name = sanitize_text_field($_POST['signer_name'] ?? '');
+        $signer_email = sanitize_email($_POST['signer_email'] ?? '');
+
+        if ($document_id === 0) {
+            wp_send_json_error(['message' => __('Documento não especificado.', 'signdocs-brasil')]);
+        }
+        if ($signer_name === '' || $signer_email === '') {
+            wp_send_json_error(['message' => __('Nome e email do signatário são obrigatórios.', 'signdocs-brasil')]);
+        }
+
+        // Read PDF from WordPress attachment
+        $file_path = get_attached_file($document_id);
+        if (!$file_path || !file_exists($file_path)) {
+            wp_send_json_error(['message' => __('Documento não encontrado.', 'signdocs-brasil')], 404);
+        }
+
+        $file_size = filesize($file_path);
+        if ($file_size > self::MAX_FILE_SIZE) {
+            wp_send_json_error(['message' => __('Arquivo excede o limite de 15 MB.', 'signdocs-brasil')]);
+        }
+
+        $pdf_content = file_get_contents($file_path);
+        if ($pdf_content === false) {
+            wp_send_json_error(['message' => __('Erro ao ler o documento.', 'signdocs-brasil')]);
+        }
+
+        $policy = sanitize_text_field($_POST['policy'] ?? get_option('signdocs_default_policy', 'CLICK_ONLY'));
+        $locale = sanitize_text_field($_POST['locale'] ?? get_option('signdocs_default_locale', 'pt-BR'));
+        $expiration = absint($_POST['expiration'] ?? get_option('signdocs_default_expiration', 60));
+        $return_url = esc_url_raw($_POST['return_url'] ?? '');
+        $filename = basename($file_path);
+
+        // Build signer external ID from email
+        $user_external_id = 'wp_' . md5($signer_email);
+
+        try {
+            $request = new CreateSigningSessionRequest(
+                name: sprintf(__('Assinatura: %s', 'signdocs-brasil'), $filename),
+                type: $policy,
+                signers: [
+                    [
+                        'name' => $signer_name,
+                        'email' => $signer_email,
+                        'userExternalId' => $user_external_id,
+                    ],
+                ],
+                documents: [
+                    [
+                        'content' => base64_encode($pdf_content),
+                        'filename' => $filename,
+                    ],
+                ],
+                redirectUrl: $return_url ?: null,
+                expiresInMinutes: $expiration ?: null,
+                metadata: [
+                    'wp_source' => $source,
+                    'wp_document_id' => (string) $document_id,
+                    'wp_site_url' => home_url(),
+                ],
+                locale: $locale,
+            );
+
+            $session = $client->signingSessions->create($request);
+
+            // Create CPT post to track this signing
+            $post_id = wp_insert_post([
+                'post_type' => Signdocs_CPT::POST_TYPE,
+                'post_title' => $signer_name . ' — ' . $filename,
+                'post_status' => 'publish',
+            ]);
+
+            if (!is_wp_error($post_id)) {
+                update_post_meta($post_id, '_signdocs_session_id', $session->sessionId ?? '');
+                update_post_meta($post_id, '_signdocs_transaction_id', $session->transactionId ?? '');
+                update_post_meta($post_id, '_signdocs_status', 'ACTIVE');
+                update_post_meta($post_id, '_signdocs_signer_name', $signer_name);
+                update_post_meta($post_id, '_signdocs_signer_email', $signer_email);
+                update_post_meta($post_id, '_signdocs_policy', $policy);
+                update_post_meta($post_id, '_signdocs_document_attachment_id', $document_id);
+                update_post_meta($post_id, '_signdocs_session_url', $session->url ?? '');
+                update_post_meta($post_id, '_signdocs_source', $source);
+            }
+
+            wp_send_json_success([
+                'clientSecret' => $session->clientSecret ?? '',
+                'sessionId' => $session->sessionId ?? '',
+                'sessionUrl' => $session->url ?? '',
+                'postId' => $post_id,
+            ]);
+        } catch (\Throwable $e) {
+            wp_send_json_error(['message' => $e->getMessage()], 500);
+        }
+    }
+}

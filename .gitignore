@@ -1,0 +1,38 @@
+# PHP
+/vendor/
+/.phpunit.cache/
+/.phpcs.cache
+/.phpstan.cache
+/phpunit.result.cache
+composer.phar
+
+# Node (block assets if ever built)
+/node_modules/
+
+# Build / release artefacts
+/build/
+*.zip
+
+# OS / IDE
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Env / secrets
+.env
+.env.*
+!.env.example
+
+# WP test framework scratch
+/tests/wp-test-library/
+/wordpress-tests-lib/
+/wp-tests-config.php
+
+# Logs
+*.log
+
+# Internal working notes — not part of public source
+CLAUDE.md
