@@ -5,12 +5,13 @@ declare(strict_types=1);
 namespace SignDocsBrasil\WordPress\Admin;
 
 use SignDocsBrasil\WordPress\Auth\Capabilities;
-use SignDocsBrasil\WordPress\Support\Logger;
 
 /**
- * CSV export endpoint for the audit log. Streams rows to php://output
- * so large exports don't fill memory. Reuses AuditTable's WHERE builder
- * so "what you export" exactly matches "what the table shows".
+ * CSV export endpoint for the audit log.
+ *
+ * Streams rows to php://output via {@see AuditQuery::chunks()} so
+ * large exports don't fill memory. All SQL lives in AuditQuery; this
+ * file is purely HTTP + serialization.
  */
 final class AuditExport {
 
@@ -18,14 +19,12 @@ final class AuditExport {
 
 	public static function handle(): void {
 		if ( ! \current_user_can( Capabilities::VIEW_LOGS ) ) {
-			\wp_die( \esc_html__( 'Sem permissão.', 'signdocs-brasil' ), 403 );
+			\wp_die( \esc_html__( 'Sem permissão.', 'signdocs-brasil' ), '', array( 'response' => 403 ) );
 		}
 
 		\check_admin_referer( 'signdocs_audit_export' );
 
-		global $wpdb;
-		$table            = Logger::tableName();
-		[$where, $params] = AuditTable::buildWhere();
+		$filters = Filters::fromRequest();
 
 		\nocache_headers();
 		header( 'Content-Type: text/csv; charset=utf-8' );
@@ -33,34 +32,14 @@ final class AuditExport {
 
 		$out = fopen( 'php://output', 'wb' );
 		if ( $out === false ) {
-			\wp_die( 'Failed to open output stream', 500 );
+			\wp_die( 'Failed to open output stream', '', array( 'response' => 500 ) );
 		}
+
 		// BOM for Excel compatibility on UTF-8.
 		fwrite( $out, "\xEF\xBB\xBF" );
 		fputcsv( $out, array( 'created_at', 'level', 'event_type', 'message', 'context' ) );
 
-		$offset = 0;
-		while ( true ) {
-			$batchParams   = $params;
-			$batchParams[] = $offset;
-			$batchParams[] = self::CHUNK_SIZE;
-
-			// phpcs:disable WordPress.DB.PreparedSQL.InterpolatedNotPrepared,WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare,WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- $table is our own prefix+const; $where is produced by AuditTable::buildWhere() using %s/%d placeholders; $batchParams supplies the values.
-			$rows = $wpdb->get_results(
-				$wpdb->prepare(
-					"SELECT created_at, level, event_type, message, context
-                       FROM {$table}
-                      WHERE {$where}
-                   ORDER BY id DESC
-                      LIMIT %d, %d",
-					...$batchParams,
-				),
-				ARRAY_A,
-			);
-			// phpcs:enable WordPress.DB.PreparedSQL.InterpolatedNotPrepared,WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare,WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber
-			if ( ! is_array( $rows ) || $rows === array() ) {
-				break;
-			}
+		foreach ( AuditQuery::chunks( $filters, self::CHUNK_SIZE ) as $rows ) {
 			foreach ( $rows as $row ) {
 				fputcsv(
 					$out,
@@ -73,10 +52,6 @@ final class AuditExport {
 					)
 				);
 			}
-			if ( count( $rows ) < self::CHUNK_SIZE ) {
-				break;
-			}
-			$offset += self::CHUNK_SIZE;
 		}
 
 		fclose( $out );

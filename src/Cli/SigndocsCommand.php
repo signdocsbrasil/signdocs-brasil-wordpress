@@ -7,6 +7,8 @@ namespace SignDocsBrasil\WordPress\Cli;
 use SignDocsBrasil\Api\Models\CreateSigningSessionRequest;
 use SignDocsBrasil\Api\Models\Signer;
 use SignDocsBrasil\Api\Models\Policy;
+use SignDocsBrasil\WordPress\Admin\AuditQuery;
+use SignDocsBrasil\WordPress\Admin\Filters;
 
 /**
  * WP-CLI commands for operating the SignDocs Brasil plugin from
@@ -146,33 +148,40 @@ final class SigndocsCommand {
 	 * : Max rows (default 50)
 	 */
 	public function log_tail( array $args, array $assoc ): void {
-		global $wpdb;
-		$table  = $wpdb->prefix . 'signdocs_log';
-		$limit  = max( 1, min( 500, (int) ( $assoc['limit'] ?? 50 ) ) );
-		$where  = array( '1=1' );
-		$params = array();
+		$limit = max( 1, min( 500, (int) ( $assoc['limit'] ?? 50 ) ) );
 
+		// Build a Filters from the CLI args — same validation guarantees
+		// as the admin UI.
+		$requestLike = array();
+		if ( isset( $assoc['level'] ) && is_string( $assoc['level'] ) ) {
+			$requestLike['level'] = $assoc['level'];
+		}
 		if ( isset( $assoc['events'] ) && is_string( $assoc['events'] ) ) {
-			$events = array_filter( array_map( 'trim', explode( ',', $assoc['events'] ) ) );
+			// Pre-1.3.0 CLI accepted multiple events; Filters accepts one.
+			// If multiple were passed, use the first — the rest are quietly
+			// dropped with a log line so the operator notices.
+			$events = array_values( array_filter( array_map( 'trim', explode( ',', $assoc['events'] ) ) ) );
+			if ( count( $events ) > 1 ) {
+				\WP_CLI::warning( 'Only the first event is applied; multi-event filter was removed in v1.3.0.' );
+			}
 			if ( $events !== array() ) {
-				$placeholders = implode( ',', array_fill( 0, count( $events ), '%s' ) );
-				$where[]      = "event_type IN ({$placeholders})";
-				$params       = array_merge( $params, $events );
+				$requestLike['event_type'] = $events[0];
 			}
 		}
-		if ( isset( $assoc['level'] ) && is_string( $assoc['level'] ) ) {
-			$where[]  = 'level = %s';
-			$params[] = $assoc['level'];
-		}
 
-		$params[] = $limit;
-		// phpcs:disable WordPress.DB.PreparedSQL.InterpolatedNotPrepared,WordPress.DB.PreparedSQL.NotPrepared,WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare,WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- $table is our prefix+const; $where is a whitelist of our own fragments with %s placeholders; $params supplies the values.
-		$query = "SELECT created_at, level, event_type, message FROM {$table} WHERE " . implode( ' AND ', $where ) . ' ORDER BY id DESC LIMIT %d';
-		$rows  = $wpdb->get_results( $wpdb->prepare( $query, ...$params ) );
-		// phpcs:enable WordPress.DB.PreparedSQL.InterpolatedNotPrepared,WordPress.DB.PreparedSQL.NotPrepared,WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare,WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber
+		$filters = Filters::fromRequest( $requestLike );
+		$rows    = AuditQuery::select( $filters, 0, $limit );
 
-		foreach ( array_reverse( $rows ?: array() ) as $row ) {
-			\WP_CLI::line( sprintf( '%s [%s] %s — %s', $row->created_at, $row->level, $row->event_type, $row->message ) );
+		foreach ( array_reverse( $rows ) as $row ) {
+			\WP_CLI::line(
+				sprintf(
+					'%s [%s] %s — %s',
+					(string) $row['created_at'],
+					(string) $row['level'],
+					(string) $row['event_type'],
+					(string) $row['message'],
+				)
+			);
 		}
 	}
 

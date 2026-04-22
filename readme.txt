@@ -5,7 +5,7 @@ Tags: assinatura eletronica, electronic signature, assinatura digital, contrato,
 Requires at least: 6.0
 Tested up to: 6.7
 Requires PHP: 8.1
-Stable tag: 1.2.1
+Stable tag: 1.2.2
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -173,6 +173,14 @@ Sim. Configure cor da marca e logotipo nas configurações do plugin. A página 
 7. Email de pedido WooCommerce com link de assinatura
 
 == Changelog ==
+
+= 1.2.2 =
+
+Security audit + refactor.
+
+* **AuditQuery refactor** — all raw SQL extracted into `src/Admin/AuditQuery.php`. New `src/Admin/Filters.php` value object enforces validation at its constructor, so by the time `AuditQuery` sees a value it's already allow-list-checked. `AuditTable`, `AuditExport`, and `SigndocsCommand::log_tail` are now thin consumers with zero raw SQL.
+* **SQL-injection fuzz test suite** — `tests/Unit/AuditQueryFuzzTest.php` runs 24 SQL-injection payloads across every filter field (level, event_type, from, to, orderby, order) and asserts that every payload is either rejected by the allow-list or survives only via `%s` placeholders — never into a SQL literal. 47 total unit tests / 552 assertions, all green.
+* **Black-box pen test** — `tests/pen_test.sh` exercises a running WordPress 6.9.x + MariaDB 11 stack (podman pod). Tests SQLi across audit filters + CSV export, webhook HMAC bypass attempts (no-sig, wrong-sig, stale-ts, garbage-ts, valid-sig, replay-dedup), CSRF on admin-post.php, and subscriber-role authorization against the audit log. All checks passed — runtime behavior matches the `phpcs:ignore` justifications.
 
 = 1.2.1 =
 

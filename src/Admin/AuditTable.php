@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace SignDocsBrasil\WordPress\Admin;
 
 use SignDocsBrasil\WordPress\Auth\Capabilities;
-use SignDocsBrasil\WordPress\Support\Logger;
 
 // The WP_List_Table class lives in wp-admin/includes/ and is not
 // autoloaded. The admin page that instantiates this must require the
@@ -18,11 +17,11 @@ if ( ! class_exists( \WP_List_Table::class ) ) {
 }
 
 /**
- * Admin list table over the `wp_signdocs_log` audit table.
+ * Admin list view over the signdocs audit log.
  *
- * Filters: level, event_type, date range. CSV export is handled by
- * {@see AuditExport}, a separate admin-post.php endpoint that reuses
- * the same WHERE clause so "export" matches "view".
+ * Rendering only — all SQL lives in {@see AuditQuery}. The table
+ * constructs a {@see Filters} from the current request and delegates
+ * count / select to the query layer.
  */
 final class AuditTable extends \WP_List_Table {
 
@@ -59,38 +58,16 @@ final class AuditTable extends \WP_List_Table {
 	}
 
 	public function prepare_items(): void {
-		global $wpdb;
-		$table = Logger::tableName();
+		$filters = Filters::fromRequest();
 
-		[$where, $params] = self::buildWhere();
-
-		// phpcs:disable WordPress.Security.NonceVerification.Recommended -- read-only pagination/sort; no state change
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- read-only pagination; no state change
 		$page   = max( 1, (int) ( $_REQUEST['paged'] ?? 1 ) );
 		$offset = ( $page - 1 ) * self::PER_PAGE;
 
-		$orderby = in_array( $_REQUEST['orderby'] ?? '', array( 'created_at', 'level', 'event_type' ), true )
-			? (string) $_REQUEST['orderby']
-			: 'created_at';
-		$order   = ( ( $_REQUEST['order'] ?? '' ) === 'asc' ) ? 'ASC' : 'DESC';
-		// phpcs:enable WordPress.Security.NonceVerification.Recommended
+		$total = AuditQuery::count( $filters );
+		$rows  = AuditQuery::select( $filters, $offset, self::PER_PAGE );
 
-		// phpcs:disable WordPress.DB.PreparedSQL.InterpolatedNotPrepared,WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare,WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- $table is our own prefix+const; $where is built in buildWhere() with %s/%d placeholders; $orderby/$order are strict-whitelisted above; $params is a safe spread.
-		$total = (int) $wpdb->get_var(
-			$wpdb->prepare( "SELECT COUNT(*) FROM {$table} WHERE {$where}", ...$params )
-		);
-
-		$params[] = $offset;
-		$params[] = self::PER_PAGE;
-		$rows     = $wpdb->get_results(
-			$wpdb->prepare(
-				"SELECT * FROM {$table} WHERE {$where} ORDER BY {$orderby} {$order} LIMIT %d, %d",
-				...$params,
-			),
-			ARRAY_A,
-		);
-		// phpcs:enable WordPress.DB.PreparedSQL.InterpolatedNotPrepared,WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare,WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber
-
-		$this->items = is_array( $rows ) ? $rows : array();
+		$this->items = $rows;
 		$this->set_pagination_args(
 			array(
 				'total_items' => $total,
@@ -119,44 +96,6 @@ final class AuditTable extends \WP_List_Table {
 				return $ctx === '' ? '' : '<code>' . \esc_html( mb_strimwidth( $ctx, 0, 180, '…' ) ) . '</code>';
 		}
 		return '';
-	}
-
-	/**
-	 * Build the WHERE clause shared by the table and the CSV exporter.
-	 * Centralized so "what you see" matches "what you export".
-	 *
-	 * @return array{0:string,1:array<int,int|string>}
-	 */
-	public static function buildWhere(): array {
-		$where  = array( '1=1' );
-		$params = array();
-
-		// phpcs:disable WordPress.Security.NonceVerification.Recommended -- read-only list filters; each value is sanitized/whitelisted below
-		$level = isset( $_REQUEST['level'] ) ? \sanitize_text_field( wp_unslash( (string) $_REQUEST['level'] ) ) : '';
-		if ( in_array( $level, array( 'debug', 'info', 'warning', 'error' ), true ) ) {
-			$where[]  = 'level = %s';
-			$params[] = $level;
-		}
-
-		$event = isset( $_REQUEST['event_type'] ) ? \sanitize_text_field( wp_unslash( (string) $_REQUEST['event_type'] ) ) : '';
-		if ( $event !== '' && preg_match( '/^[A-Za-z0-9._-]{1,64}$/', $event ) ) {
-			$where[]  = 'event_type = %s';
-			$params[] = $event;
-		}
-
-		$from = isset( $_REQUEST['from'] ) ? \sanitize_text_field( wp_unslash( (string) $_REQUEST['from'] ) ) : '';
-		if ( $from !== '' && preg_match( '/^\d{4}-\d{2}-\d{2}$/', $from ) ) {
-			$where[]  = 'created_at >= %s';
-			$params[] = $from . ' 00:00:00';
-		}
-		$to = isset( $_REQUEST['to'] ) ? \sanitize_text_field( wp_unslash( (string) $_REQUEST['to'] ) ) : '';
-		if ( $to !== '' && preg_match( '/^\d{4}-\d{2}-\d{2}$/', $to ) ) {
-			$where[]  = 'created_at <= %s';
-			$params[] = $to . ' 23:59:59';
-		}
-		// phpcs:enable WordPress.Security.NonceVerification.Recommended
-
-		return array( implode( ' AND ', $where ), $params );
 	}
 
 	public static function registerPage(): void {
