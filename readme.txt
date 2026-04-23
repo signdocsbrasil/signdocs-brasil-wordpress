@@ -5,7 +5,7 @@ Tags: assinatura eletronica, electronic signature, assinatura digital, contrato,
 Requires at least: 6.0
 Tested up to: 6.7
 Requires PHP: 8.1
-Stable tag: 1.2.3
+Stable tag: 1.3.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -173,6 +173,17 @@ Sim. Configure cor da marca e logotipo nas configurações do plugin. A página 
 7. Email de pedido WooCommerce com link de assinatura
 
 == Changelog ==
+
+= 1.3.0 =
+
+Realigned the plugin to the actual SignDocs Brasil API schema. Releases 1.x through 1.2.3 called the PHP SDK with constructor arguments that the SDK accepted syntactically but that the API has never validated — any signing-session or envelope create call from those releases would have returned 400 Bad Request. This release fixes that and adds the v1.2.0 spec's invitation/notification flow.
+
+* **Fixed:** `CreateSigningSessionRequest` now uses `purpose`, `policy`, `signer`, `document`, `returnUrl` — matching the API. Affects AJAX session creation, WooCommerce order flow, WP-CLI `wp signdocs send`, and the envelope flow.
+* **Fixed:** `CreateEnvelopeRequest` uses the nested `document` array (`['content' => ..., 'filename' => ...]`) instead of flat `documentContent`/`documentFilename` params.
+* **Fixed:** `AddEnvelopeSessionRequest` uses typed `Signer` + `Policy` nested objects with required `userExternalId` instead of a loose associative array.
+* **Fixed:** `wp signdocs send --document=ID` now reads the WordPress attachment by ID, base64-encodes the PDF, and sends it as the document content (previously passed a non-existent `documentId` field).
+* **Added:** "E-mail do Solicitante" / "Nome do Solicitante" settings (Settings → SignDocs Brasil → Padrões). When set, the API automatically sends a signing invitation to each signer whose email differs from the owner's, and emails the owner when each signing completes. Omit to keep the traditional "deliver the signing URL yourself + webhooks" behavior.
+* **Dependency:** requires `signdocs-brasil/signdocs-brasil-php: ^1.4` (already in composer.json).
 
 = 1.2.3 =
 

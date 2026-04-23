@@ -3,6 +3,9 @@
 defined('ABSPATH') || exit;
 
 use SignDocsBrasil\Api\Models\CreateSigningSessionRequest;
+use SignDocsBrasil\Api\Models\Owner;
+use SignDocsBrasil\Api\Models\Policy;
+use SignDocsBrasil\Api\Models\Signer;
 
 /**
  * AJAX handler for creating signing sessions from the frontend.
@@ -93,30 +96,40 @@ final class Signdocs_Ajax
         $user_external_id = 'wp_' . md5($signer_email);
 
         try {
+            // Optional owner identity — pulled from settings. When set, the backend
+            // auto-sends an invite email to the signer (if their email differs) and
+            // notifies the owner on completion. Omit to keep prior behavior (caller
+            // delivers the signing URL themselves + relies on webhooks).
+            $owner_email = (string) get_option('signdocs_owner_email', '');
+            $owner_name  = (string) get_option('signdocs_owner_name', '');
+            $owner       = ($owner_email !== '' || $owner_name !== '')
+                ? new Owner(
+                    email: $owner_email !== '' ? $owner_email : null,
+                    name: $owner_name !== '' ? $owner_name : null,
+                )
+                : null;
+
             $request = new CreateSigningSessionRequest(
-                name: sprintf(__('Assinatura: %s', 'signdocs-brasil'), $filename),
-                type: $policy,
-                signers: [
-                    [
-                        'name' => $signer_name,
-                        'email' => $signer_email,
-                        'userExternalId' => $user_external_id,
-                    ],
+                purpose: 'DOCUMENT_SIGNATURE',
+                policy: new Policy(profile: $policy),
+                signer: new Signer(
+                    name: $signer_name,
+                    userExternalId: $user_external_id,
+                    email: $signer_email,
+                ),
+                document: [
+                    'content'  => base64_encode($pdf_content),
+                    'filename' => $filename,
                 ],
-                documents: [
-                    [
-                        'content' => base64_encode($pdf_content),
-                        'filename' => $filename,
-                    ],
-                ],
-                redirectUrl: $return_url ?: null,
-                expiresInMinutes: $expiration ?: null,
+                returnUrl: $return_url ?: null,
                 metadata: [
-                    'wp_source' => $source,
+                    'wp_source'      => $source,
                     'wp_document_id' => (string) $document_id,
-                    'wp_site_url' => home_url(),
+                    'wp_site_url'    => home_url(),
                 ],
                 locale: $locale,
+                expiresInMinutes: $expiration ?: null,
+                owner: $owner,
             );
 
             $session = $client->signingSessions->create($request);

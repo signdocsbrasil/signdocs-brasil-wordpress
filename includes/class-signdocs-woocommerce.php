@@ -3,6 +3,9 @@
 defined('ABSPATH') || exit;
 
 use SignDocsBrasil\Api\Models\CreateSigningSessionRequest;
+use SignDocsBrasil\Api\Models\Owner;
+use SignDocsBrasil\Api\Models\Policy;
+use SignDocsBrasil\Api\Models\Signer;
 
 /**
  * Optional WooCommerce integration.
@@ -131,28 +134,38 @@ final class Signdocs_WooCommerce
         $filename = basename($file_path);
 
         try {
+            // Optional owner identity — pulled from settings. When set, the backend
+            // auto-sends an invite email to the customer (always differs from owner
+            // here since order buyer is the signer) and notifies the owner on
+            // completion. Omit to keep prior behavior.
+            $owner_email = (string) get_option('signdocs_owner_email', '');
+            $owner_name  = (string) get_option('signdocs_owner_name', '');
+            $owner       = ($owner_email !== '' || $owner_name !== '')
+                ? new Owner(
+                    email: $owner_email !== '' ? $owner_email : null,
+                    name: $owner_name !== '' ? $owner_name : null,
+                )
+                : null;
+
             $request = new CreateSigningSessionRequest(
-                name: sprintf(__('Pedido #%s — %s', 'signdocs-brasil'), $order->get_order_number(), $filename),
-                type: $policy,
-                signers: [
-                    [
-                        'name' => $signer_name,
-                        'email' => $signer_email,
-                        'userExternalId' => 'wc_' . $order->get_billing_email(),
-                    ],
-                ],
-                documents: [
-                    [
-                        'content' => base64_encode(file_get_contents($file_path)),
-                        'filename' => $filename,
-                    ],
+                purpose: 'DOCUMENT_SIGNATURE',
+                policy: new Policy(profile: $policy),
+                signer: new Signer(
+                    name: $signer_name,
+                    userExternalId: 'wc_' . $order->get_billing_email(),
+                    email: $signer_email,
+                ),
+                document: [
+                    'content'  => base64_encode(file_get_contents($file_path)),
+                    'filename' => $filename,
                 ],
                 metadata: [
-                    'wp_source' => 'woocommerce',
+                    'wp_source'   => 'woocommerce',
                     'wc_order_id' => (string) $order->get_id(),
                     'wp_site_url' => home_url(),
                 ],
                 locale: $locale,
+                owner: $owner,
             );
 
             $session = $client->signingSessions->create($request);

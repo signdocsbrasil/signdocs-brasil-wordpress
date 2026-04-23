@@ -66,21 +66,38 @@ final class SigndocsCommand {
 	 *     wp signdocs send --document=doc_abc --email=joao@example.com
 	 */
 	public function send( array $args, array $assoc ): void {
-		$documentId = (string) ( $assoc['document'] ?? '' );
+		$documentId = (int) ( $assoc['document'] ?? 0 );
 		$email      = (string) ( $assoc['email'] ?? '' );
 		$policy     = (string) ( $assoc['policy'] ?? 'CLICK_ONLY' );
 
-		if ( $documentId === '' || $email === '' ) {
-			\WP_CLI::error( '--document and --email are required' );
+		if ( $documentId <= 0 || $email === '' ) {
+			\WP_CLI::error( '--document (WordPress attachment ID) and --email are required' );
+		}
+
+		$filePath = get_attached_file( $documentId );
+		if ( ! $filePath || ! file_exists( $filePath ) ) {
+			\WP_CLI::error( 'attachment ' . $documentId . ' not found or unreadable' );
+		}
+		$pdfContent = file_get_contents( $filePath );
+		if ( $pdfContent === false ) {
+			\WP_CLI::error( 'failed to read attachment ' . $documentId );
 		}
 
 		$client = $this->client();
 
 		try {
 			$request = new CreateSigningSessionRequest(
-				documentId: $documentId,
-				signer: new Signer( name: $email, email: $email ),
+				purpose: 'DOCUMENT_SIGNATURE',
 				policy: new Policy( profile: $policy ),
+				signer: new Signer(
+					name: $email,
+					userExternalId: 'wp_cli_' . md5( $email ),
+					email: $email,
+				),
+				document: array(
+					'content'  => base64_encode( $pdfContent ),
+					'filename' => basename( $filePath ),
+				),
 			);
 			$session = $client->signingSessions->create( $request );
 			\WP_CLI::success( 'session: ' . ( $session->sessionId ?? '?' ) . ' url: ' . ( $session->url ?? '?' ) );

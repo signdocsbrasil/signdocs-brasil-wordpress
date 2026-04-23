@@ -9,6 +9,9 @@ use SignDocsBrasil\Api\Models\CreateEnvelopeRequest;
 use SignDocsBrasil\Api\Models\Envelope;
 use SignDocsBrasil\Api\Models\EnvelopeDetail;
 use SignDocsBrasil\Api\Models\EnvelopeSession;
+use SignDocsBrasil\Api\Models\Owner;
+use SignDocsBrasil\Api\Models\Policy;
+use SignDocsBrasil\Api\Models\Signer;
 use SignDocsBrasil\Api\SignDocsBrasilClient;
 use SignDocsBrasil\WordPress\Support\IdempotencyKey;
 
@@ -40,17 +43,23 @@ final class EnvelopeService {
 		?array $metadata = null,
 		?string $locale = null,
 		?int $expiresInMinutes = null,
+		?Owner $owner = null,
 	): Envelope {
+		$document = array( 'content' => $documentContent );
+		if ( $documentFilename !== null ) {
+			$document['filename'] = $documentFilename;
+		}
+
 		$request = new CreateEnvelopeRequest(
 			signingMode: $signingMode,
 			totalSigners: $totalSigners,
-			documentContent: $documentContent,
-			documentFilename: $documentFilename,
-			returnUrl: $returnUrl,
-			cancelUrl: $cancelUrl,
+			document: $document,
 			metadata: $metadata,
 			locale: $locale,
+			returnUrl: $returnUrl,
+			cancelUrl: $cancelUrl,
 			expiresInMinutes: $expiresInMinutes,
+			owner: $owner,
 		);
 
 		$idempotencyKey = IdempotencyKey::forAction(
@@ -82,24 +91,16 @@ final class EnvelopeService {
 		?string $signerCpf = null,
 		?string $policyProfile = null,
 	): EnvelopeSession {
-		// Build from-array since AddEnvelopeSessionRequest constructor
-		// shape can evolve; this keeps us aligned with the SDK's schema.
-		$payload = array(
-			'signerIndex' => $signerIndex,
-			'signer'      => array_filter(
-				array(
-					'name'  => $signerName,
-					'email' => $signerEmail,
-					'cpf'   => $signerCpf,
-				),
-				static fn( $v ) => $v !== null
+		$request = new AddEnvelopeSessionRequest(
+			signer: new Signer(
+				name: $signerName,
+				userExternalId: 'wp_' . md5( $signerEmail ),
+				email: $signerEmail,
+				cpf: $signerCpf,
 			),
+			policy: new Policy( profile: $policyProfile ?? 'CLICK_ONLY' ),
+			signerIndex: $signerIndex,
 		);
-		if ( $policyProfile !== null ) {
-			$payload['policy'] = array( 'profile' => $policyProfile );
-		}
-
-		$request = AddEnvelopeSessionRequest::fromArray( $payload );
 		return $this->client->envelopes->addSession( $envelopeId, $request );
 	}
 

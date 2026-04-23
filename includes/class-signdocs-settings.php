@@ -105,6 +105,16 @@ final class Signdocs_Settings
             'default' => false,
             'sanitize_callback' => 'rest_sanitize_boolean',
         ]);
+        register_setting(self::OPTION_GROUP, 'signdocs_owner_email', [
+            'type' => 'string',
+            'default' => '',
+            'sanitize_callback' => 'sanitize_email',
+        ]);
+        register_setting(self::OPTION_GROUP, 'signdocs_owner_name', [
+            'type' => 'string',
+            'default' => '',
+            'sanitize_callback' => 'sanitize_text_field',
+        ]);
 
         add_settings_field('signdocs_default_policy', __('Perfil de Assinatura', 'signdocs-brasil'), [$this, 'render_policy_field'], self::PAGE_SLUG, 'signdocs_defaults');
         add_settings_field('signdocs_default_locale', __('Idioma', 'signdocs-brasil'), [$this, 'render_locale_field'], self::PAGE_SLUG, 'signdocs_defaults');
@@ -117,6 +127,16 @@ final class Signdocs_Settings
         add_settings_field('signdocs_allow_anonymous', __('Assinatura Anônima', 'signdocs-brasil'), [$this, 'render_checkbox_field'], self::PAGE_SLUG, 'signdocs_defaults', [
             'name' => 'signdocs_allow_anonymous',
             'label' => __('Permitir visitantes não autenticados iniciarem assinatura', 'signdocs-brasil'),
+        ]);
+        add_settings_field('signdocs_owner_email', __('E-mail do Solicitante', 'signdocs-brasil'), [$this, 'render_text_field'], self::PAGE_SLUG, 'signdocs_defaults', [
+            'name' => 'signdocs_owner_email',
+            'placeholder' => 'solicitante@empresa.com.br',
+            'description' => __('Opcional. Quando preenchido, a SignDocs envia automaticamente um convite para o signatário (se seu e-mail for diferente) e notifica este endereço quando cada assinatura for concluída. Deixe em branco para manter o comportamento tradicional (entrega da URL por conta própria + webhooks).', 'signdocs-brasil'),
+        ]);
+        add_settings_field('signdocs_owner_name', __('Nome do Solicitante', 'signdocs-brasil'), [$this, 'render_text_field'], self::PAGE_SLUG, 'signdocs_defaults', [
+            'name' => 'signdocs_owner_name',
+            'placeholder' => 'Maria Souza',
+            'description' => __('Opcional. Exibido no rodapé do convite de assinatura e na saudação da notificação de conclusão.', 'signdocs-brasil'),
         ]);
 
         // --- Webhooks ---
