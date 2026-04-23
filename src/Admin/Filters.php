@@ -52,17 +52,18 @@ final class Filters {
 	}
 
 	/**
-	 * Construct a {@see Filters} from a `$_REQUEST`-shaped array.
+	 * Construct a {@see Filters} from a request-shaped array.
 	 * Bad/missing/malicious values silently become null — the intent is
 	 * "read what's valid, ignore what isn't" rather than hard-fail.
 	 *
-	 * @param array<string,mixed>|null $request Defaults to $_REQUEST.
+	 * Callers are required to pass the request array explicitly. This
+	 * keeps the $_REQUEST touch point in the caller (where CSRF /
+	 * capability context lives), not here. See {@see AuditTable} and
+	 * {@see AuditExport} for how the admin pages feed this method.
+	 *
+	 * @param array<string,mixed> $request
 	 */
-	public static function fromRequest( ?array $request = null ): self {
-		if ( $request === null ) {
-			// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- this is the validation layer; caller is responsible for CSRF on state-changing operations
-			$request = $_REQUEST;
-		}
+	public static function fromRequest( array $request ): self {
 
 		$level = null;
 		if ( isset( $request['level'] ) ) {

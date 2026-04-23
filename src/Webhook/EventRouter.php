@@ -312,16 +312,29 @@ final class EventRouter {
 	}
 
 	private function queryByMeta( string $key, string $value ): int {
-		global $wpdb;
-		$id = $wpdb->get_var(
-			$wpdb->prepare(
-				"SELECT post_id FROM {$wpdb->postmeta}
-                 WHERE meta_key = %s AND meta_value = %s
-                 LIMIT 1",
-				$key,
-				$value,
+		// WP_Query path — avoids a direct $wpdb->postmeta scan and
+		// restricts the lookup to our own CPT. `fields => ids` skips
+		// hydrating full WP_Post objects.
+		$ids = \get_posts(
+			array(
+				'post_type'              => 'signdocs_signing',
+				'post_status'            => 'any',
+				'numberposts'            => 1,
+				'fields'                 => 'ids',
+				'no_found_rows'          => true,
+				'update_post_meta_cache' => false,
+				'update_post_term_cache' => false,
+				'meta_query'             => array(
+					array(
+						'key'     => $key,
+						'value'   => $value,
+						'compare' => '=',
+					),
+				),
 			)
 		);
+
+		$id = is_array( $ids ) && $ids !== array() ? $ids[0] : 0;
 		return $id ? (int) $id : 0;
 	}
 }

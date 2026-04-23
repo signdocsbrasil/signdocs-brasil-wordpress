@@ -61,7 +61,6 @@ final class Logger {
 	public static function dropSchema(): void {
 		global $wpdb;
 		$table = self::tableName();
-		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- $table is $wpdb->prefix + plugin-owned constant, never user input.
 		$wpdb->query( "DROP TABLE IF EXISTS {$table}" );
 
 		$timestamp = \wp_next_scheduled( self::CRON_HOOK );
@@ -76,10 +75,8 @@ final class Logger {
 	public static function prune(): void {
 		global $wpdb;
 		$table = self::tableName();
-		// $table is $wpdb->prefix + plugin-owned constant; retention-days uses %d placeholder.
 		$wpdb->query(
 			$wpdb->prepare(
-				// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 				"DELETE FROM {$table} WHERE created_at < DATE_SUB(NOW(), INTERVAL %d DAY)",
 				self::RETENTION_DAYS,
 			)

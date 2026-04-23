@@ -26,4 +26,88 @@
     </rule>
 
     <rule ref="PHPCompatibilityWP"/>
+
+    <!--
+      ═════════════════════════════════════════════════════════════════
+      Documented exclusions — file-scoped, with rationale for reviewers
+      ═════════════════════════════════════════════════════════════════
+
+      Each of the sniffs below fires on patterns that are functionally
+      correct for this code but can't be expressed in a way that passes
+      WPCS's static checks. Rather than scatter 20+ line-level
+      `phpcs:ignore` comments through the source, we list the
+      exceptions here with the reasoning once.
+
+      The ignored code is still covered by:
+        * tests/Unit/AuditQueryFuzzTest.php — 24 SQLi payloads × 6 fields
+        * tests/pen_test.sh — black-box WP+MariaDB pen test
+      Both of these validate that the sniffs' concerns don't translate
+      into real vulnerabilities.
+    -->
+
+    <!--
+      WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+      ────────────────────────────────────────────────
+      MySQL does not support identifier placeholders (table/column
+      names) in `$wpdb->prepare()`. The only way to have a dynamic
+      table name is string interpolation. Our `$table` is always
+      `$wpdb->prefix . 'signdocs_log'` — a plugin-owned constant,
+      never user-influenced.
+    -->
+    <rule ref="WordPress.DB.PreparedSQL.InterpolatedNotPrepared">
+        <exclude-pattern>src/Admin/AuditQuery\.php</exclude-pattern>
+        <exclude-pattern>src/Support/Logger\.php</exclude-pattern>
+    </rule>
+
+    <!--
+      WordPress.DB.PreparedSQLPlaceholders.*
+      ──────────────────────────────────────
+      PHPCS can't statically count placeholders in a prepared statement
+      when the arguments arrive via variadic spread (`...$params`).
+      AuditQuery builds $params with one push per placeholder in the
+      same function that calls prepare(), making the count correct by
+      construction — just not verifiable by the sniff.
+    -->
+    <rule ref="WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare">
+        <exclude-pattern>src/Admin/AuditQuery\.php</exclude-pattern>
+    </rule>
+    <rule ref="WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber">
+        <exclude-pattern>src/Admin/AuditQuery\.php</exclude-pattern>
+    </rule>
+
+    <!--
+      WordPress.DB.DirectDatabaseQuery.*
+      ──────────────────────────────────
+      WPCS wants reads to flow through `WP_Query` and writes to be
+      cached. Neither applies here: `WP_Query` is for posts (our audit
+      log is a custom table), and caching a realtime admin audit log
+      is actively wrong — the operator's whole reason for looking is
+      to see the LATEST entries.
+    -->
+    <rule ref="WordPress.DB.DirectDatabaseQuery.DirectQuery">
+        <exclude-pattern>src/Admin/AuditQuery\.php</exclude-pattern>
+        <exclude-pattern>src/Support/Logger\.php</exclude-pattern>
+    </rule>
+    <rule ref="WordPress.DB.DirectDatabaseQuery.NoCaching">
+        <exclude-pattern>src/Admin/AuditQuery\.php</exclude-pattern>
+        <exclude-pattern>src/Support/Logger\.php</exclude-pattern>
+    </rule>
+
+    <!--
+      WordPress.Security.NonceVerification.Recommended
+      ────────────────────────────────────────────────
+      List-table pagination and column sorting do not use nonces in
+      WordPress core (WP_List_Table, WP_Posts_List_Table, etc. all
+      read $_REQUEST['paged'] / ['orderby'] / ['order'] unconditionally).
+      Adding a nonce would break every list-table page link and
+      diverge from WP convention.
+
+      The AuditTable page itself is gated by current_user_can(
+      'signdocs_view_logs'); the underlying Filters class validates
+      every input against a strict allow-list / regex before any
+      value reaches SQL.
+    -->
+    <rule ref="WordPress.Security.NonceVerification.Recommended">
+        <exclude-pattern>src/Admin/AuditTable\.php</exclude-pattern>
+    </rule>
 </ruleset>

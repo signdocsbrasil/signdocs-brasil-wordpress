@@ -24,7 +24,9 @@ final class AuditExport {
 
 		\check_admin_referer( 'signdocs_audit_export' );
 
-		$filters = Filters::fromRequest();
+		// Nonce verified above — safe to read the rest of the request.
+		$request = \wp_unslash( $_REQUEST );
+		$filters = Filters::fromRequest( is_array( $request ) ? $request : array() );
 
 		\nocache_headers();
 		header( 'Content-Type: text/csv; charset=utf-8' );

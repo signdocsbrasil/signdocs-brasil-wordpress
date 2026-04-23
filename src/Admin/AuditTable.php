@@ -58,10 +58,15 @@ final class AuditTable extends \WP_List_Table {
 	}
 
 	public function prepare_items(): void {
-		$filters = Filters::fromRequest();
+		// Reading $_REQUEST here without a nonce is explicitly allowed
+		// by the file-scoped phpcs.xml.dist exclusion: this is WP's own
+		// list-table pagination pattern and carries no state change.
+		// Every value is then strictly allow-list-validated by Filters.
+		$request = \wp_unslash( $_REQUEST );
 
-		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- read-only pagination; no state change
-		$page   = max( 1, (int) ( $_REQUEST['paged'] ?? 1 ) );
+		$filters = Filters::fromRequest( is_array( $request ) ? $request : array() );
+
+		$page   = max( 1, (int) ( is_array( $request ) && isset( $request['paged'] ) ? $request['paged'] : 1 ) );
 		$offset = ( $page - 1 ) * self::PER_PAGE;
 
 		$total = AuditQuery::count( $filters );

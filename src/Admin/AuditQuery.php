@@ -52,11 +52,9 @@ final class AuditQuery {
 		[$where, $params] = self::buildWhere( $filters );
 
 		if ( $params === array() ) {
-			// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared,WordPress.DB.DirectDatabaseQuery.NoCaching,WordPress.DB.DirectDatabaseQuery.DirectQuery -- $table is plugin-owned constant, no WHERE values to parameterize
 			return (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$table} WHERE {$where}" );
 		}
 
-		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared,WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare,WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber,WordPress.DB.DirectDatabaseQuery.NoCaching,WordPress.DB.DirectDatabaseQuery.DirectQuery -- $table is plugin-owned constant; $where uses %s placeholders; $params matches one-to-one.
 		return (int) $wpdb->get_var(
 			$wpdb->prepare( "SELECT COUNT(*) FROM {$table} WHERE {$where}", ...$params )
 		);
@@ -81,7 +79,6 @@ final class AuditQuery {
 		$params[] = $offset;
 		$params[] = $limit;
 
-		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared,WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare,WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber,WordPress.DB.DirectDatabaseQuery.NoCaching,WordPress.DB.DirectDatabaseQuery.DirectQuery -- See class docblock: $table/$orderBy/$order are plugin-controlled constants or whitelist outputs; $where + $params round-trip through prepare().
 		$rows = $wpdb->get_results(
 			$wpdb->prepare(
 				"SELECT id, created_at, level, event_type, message, context
