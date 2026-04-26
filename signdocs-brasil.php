@@ -3,7 +3,7 @@
  * Plugin Name: SignDocs Brasil
  * Plugin URI:  https://signdocs.com.br
  * Description: Assinatura eletrônica integrada ao seu site WordPress via SignDocs Brasil.
- * Version:     1.3.0
+ * Version:     1.3.1
  * Author:      SignDocs Brasil
  * Author URI:  https://signdocs.com.br
  * License:     GPL-2.0-or-later
@@ -18,7 +18,7 @@
 
 defined('ABSPATH') || exit;
 
-define('SIGNDOCS_VERSION', '1.3.0');
+define('SIGNDOCS_VERSION', '1.3.1');
 define('SIGNDOCS_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('SIGNDOCS_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('SIGNDOCS_PLUGIN_BASENAME', plugin_basename(__FILE__));
@@ -41,7 +41,8 @@ require_once SIGNDOCS_PLUGIN_DIR . 'includes/class-signdocs-plugin.php';
 register_activation_hook(__FILE__, ['Signdocs_Plugin', 'activate']);
 register_deactivation_hook(__FILE__, ['Signdocs_Plugin', 'deactivate']);
 
+// Translations are auto-loaded by WordPress core for plugins hosted on
+// WordPress.org since WP 4.6 — no need to call load_plugin_textdomain().
 add_action('plugins_loaded', function () {
-    load_plugin_textdomain('signdocs-brasil', false, dirname(SIGNDOCS_PLUGIN_BASENAME) . '/languages');
     Signdocs_Plugin::instance();
 });

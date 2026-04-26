@@ -32,12 +32,17 @@ final class AuditExport {
 		header( 'Content-Type: text/csv; charset=utf-8' );
 		header( 'Content-Disposition: attachment; filename="signdocs-audit-' . gmdate( 'Ymd-His' ) . '.csv"' );
 
+		// CSV is streamed directly to php://output so multi-GB exports
+		// don't have to buffer in memory. WP_Filesystem doesn't expose
+		// a streaming write API and would defeat the whole point.
+		// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fopen
 		$out = fopen( 'php://output', 'wb' );
 		if ( $out === false ) {
 			\wp_die( 'Failed to open output stream', '', array( 'response' => 500 ) );
 		}
 
 		// BOM for Excel compatibility on UTF-8.
+		// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fwrite
 		fwrite( $out, "\xEF\xBB\xBF" );
 		fputcsv( $out, array( 'created_at', 'level', 'event_type', 'message', 'context' ) );
 
@@ -56,6 +61,7 @@ final class AuditExport {
 			}
 		}
 
+		// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fclose
 		fclose( $out );
 		exit;
 	}

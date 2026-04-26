@@ -133,6 +133,29 @@ final class Signdocs_WooCommerce
         $locale = get_option('signdocs_default_locale', 'pt-BR');
         $filename = basename($file_path);
 
+        // CPF/CNPJ — required by the SignDocs API. Pulls from the order
+        // meta keys used by the standard "Brazilian Market on WooCommerce"
+        // (extra-checkout-fields-for-brazil) extension. If neither is
+        // present, we abort with an order note rather than firing a doomed
+        // API call that would 400.
+        $signer_cpf = preg_replace('/\D+/', '', (string) $order->get_meta('_billing_cpf'));
+        $signer_cnpj = preg_replace('/\D+/', '', (string) $order->get_meta('_billing_cnpj'));
+        if ($signer_cpf === '' && $signer_cnpj === '') {
+            $order->add_order_note(__(
+                'SignDocs: pedido sem CPF/CNPJ no checkout. Instale "Brazilian Market on WooCommerce" (ou outro plugin que adicione _billing_cpf / _billing_cnpj) e reenvie.',
+                'signdocs-brasil'
+            ));
+            return;
+        }
+        if ($signer_cpf !== '' && strlen($signer_cpf) !== 11) {
+            $order->add_order_note(__('SignDocs: _billing_cpf inválido (não tem 11 dígitos).', 'signdocs-brasil'));
+            return;
+        }
+        if ($signer_cnpj !== '' && strlen($signer_cnpj) !== 14) {
+            $order->add_order_note(__('SignDocs: _billing_cnpj inválido (não tem 14 dígitos).', 'signdocs-brasil'));
+            return;
+        }
+
         try {
             // Optional owner identity — pulled from settings. When set, the backend
             // auto-sends an invite email to the customer (always differs from owner
@@ -153,6 +176,8 @@ final class Signdocs_WooCommerce
                 signer: new Signer(
                     name: $signer_name,
                     userExternalId: 'wc_' . $order->get_billing_email(),
+                    cpf: $signer_cpf !== '' ? $signer_cpf : null,
+                    cnpj: $signer_cnpj !== '' ? $signer_cnpj : null,
                     email: $signer_email,
                 ),
                 document: [
@@ -196,11 +221,19 @@ final class Signdocs_WooCommerce
             }
 
             $order->add_order_note(
-                sprintf(__('SignDocs: Sessão de assinatura criada (ID: %s).', 'signdocs-brasil'), $session->sessionId ?? ''),
+                sprintf(
+                    /* translators: %s = SignDocs session ID returned by the API */
+                    __('SignDocs: Sessão de assinatura criada (ID: %s).', 'signdocs-brasil'),
+                    $session->sessionId ?? ''
+                )
             );
         } catch (\Throwable $e) {
             $order->add_order_note(
-                sprintf(__('SignDocs: Erro ao criar sessão — %s', 'signdocs-brasil'), $e->getMessage()),
+                sprintf(
+                    /* translators: %s = exception message describing why session creation failed */
+                    __('SignDocs: Erro ao criar sessão — %s', 'signdocs-brasil'),
+                    $e->getMessage()
+                )
             );
         }
     }
@@ -224,7 +257,11 @@ final class Signdocs_WooCommerce
         $order->save();
 
         $order->add_order_note(
-            sprintf(__('SignDocs: Documento assinado! Evidence ID: %s', 'signdocs-brasil'), $evidence_id),
+            sprintf(
+                /* translators: %s = SignDocs evidence ID after the document was signed */
+                __('SignDocs: Documento assinado! Evidence ID: %s', 'signdocs-brasil'),
+                $evidence_id
+            )
         );
 
         /**
@@ -246,7 +283,7 @@ final class Signdocs_WooCommerce
         }
 
         if ($plain_text) {
-            echo "\n" . __('Assine seu documento:', 'signdocs-brasil') . "\n" . $signing_url . "\n";
+            echo "\n" . esc_html__('Assine seu documento:', 'signdocs-brasil') . "\n" . esc_url($signing_url) . "\n";
         } else {
             echo '<h2>' . esc_html__('Assinatura de Documento', 'signdocs-brasil') . '</h2>';
             echo '<p>' . esc_html__('Por favor, assine o documento associado ao seu pedido:', 'signdocs-brasil') . '</p>';

@@ -37,12 +37,18 @@
     // Gather signer data
     var signerName = config.signerName || '';
     var signerEmail = config.signerEmail || '';
+    var signerCpf = config.signerCpf || '';
+    var signerCnpj = config.signerCnpj || '';
 
     if (config.showForm) {
       var nameInput = container.querySelector('.signdocs-field-name');
       var emailInput = container.querySelector('.signdocs-field-email');
+      var cpfInput = container.querySelector('.signdocs-field-cpf');
+      var cnpjInput = container.querySelector('.signdocs-field-cnpj');
       if (nameInput) signerName = nameInput.value.trim();
       if (emailInput) signerEmail = emailInput.value.trim();
+      if (cpfInput) signerCpf = cpfInput.value.replace(/\D+/g, '');
+      if (cnpjInput) signerCnpj = cnpjInput.value.replace(/\D+/g, '');
     }
 
     if (!signerName) {
@@ -51,6 +57,18 @@
     }
     if (!signerEmail) {
       showStatus(statusEl, config.i18n.emailRequired, true);
+      return;
+    }
+    if (!signerCpf && !signerCnpj) {
+      showStatus(statusEl, config.i18n.cpfOrCnpjRequired, true);
+      return;
+    }
+    if (signerCpf && signerCpf.length !== 11) {
+      showStatus(statusEl, config.i18n.cpfInvalid, true);
+      return;
+    }
+    if (signerCnpj && signerCnpj.length !== 14) {
+      showStatus(statusEl, config.i18n.cnpjInvalid, true);
       return;
     }
 
@@ -72,6 +90,8 @@
       document_id: config.documentId,
       signer_name: signerName,
       signer_email: signerEmail,
+      signer_cpf: signerCpf,
+      signer_cnpj: signerCnpj,
       policy: config.policy,
       locale: config.locale,
       return_url: config.returnUrl,

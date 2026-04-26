@@ -62,12 +62,23 @@ final class Signdocs_Ajax
         $document_id = absint($_POST['document_id'] ?? 0);
         $signer_name = sanitize_text_field($_POST['signer_name'] ?? '');
         $signer_email = sanitize_email($_POST['signer_email'] ?? '');
+        $signer_cpf = self::digits_only($_POST['signer_cpf'] ?? '');
+        $signer_cnpj = self::digits_only($_POST['signer_cnpj'] ?? '');
 
         if ($document_id === 0) {
             wp_send_json_error(['message' => __('Documento não especificado.', 'signdocs-brasil')]);
         }
         if ($signer_name === '' || $signer_email === '') {
             wp_send_json_error(['message' => __('Nome e email do signatário são obrigatórios.', 'signdocs-brasil')]);
+        }
+        if ($signer_cpf === '' && $signer_cnpj === '') {
+            wp_send_json_error(['message' => __('CPF ou CNPJ é obrigatório (a API exige pelo menos um).', 'signdocs-brasil')]);
+        }
+        if ($signer_cpf !== '' && strlen($signer_cpf) !== 11) {
+            wp_send_json_error(['message' => __('CPF deve ter 11 dígitos.', 'signdocs-brasil')]);
+        }
+        if ($signer_cnpj !== '' && strlen($signer_cnpj) !== 14) {
+            wp_send_json_error(['message' => __('CNPJ deve ter 14 dígitos.', 'signdocs-brasil')]);
         }
 
         // Read PDF from WordPress attachment
@@ -115,6 +126,8 @@ final class Signdocs_Ajax
                 signer: new Signer(
                     name: $signer_name,
                     userExternalId: $user_external_id,
+                    cpf: $signer_cpf !== '' ? $signer_cpf : null,
+                    cnpj: $signer_cnpj !== '' ? $signer_cnpj : null,
                     email: $signer_email,
                 ),
                 document: [
@@ -162,5 +175,15 @@ final class Signdocs_Ajax
         } catch (\Throwable $e) {
             wp_send_json_error(['message' => $e->getMessage()], 500);
         }
+    }
+
+    /**
+     * Strip everything except digits — CPFs/CNPJs are commonly entered with
+     * dots, dashes, or slashes (123.456.789-01 / 12.345.678/0001-90); the
+     * API expects digits-only.
+     */
+    private static function digits_only(string $raw): string
+    {
+        return preg_replace('/\D+/', '', sanitize_text_field($raw)) ?? '';
     }
 }

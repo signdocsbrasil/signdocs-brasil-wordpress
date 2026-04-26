@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace SignDocsBrasil\WordPress\Cpt;
 
+defined( 'ABSPATH' ) || exit;
+
 use SignDocsBrasil\WordPress\Auth\Capabilities;
 
 /**

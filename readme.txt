@@ -1,349 +1,371 @@
 === SignDocs Brasil ===
 Contributors: signdocsbrasil
 Donate link: https://signdocs.com.br
-Tags: assinatura eletronica, electronic signature, assinatura digital, contrato, woocommerce
+Tags: electronic signature, digital signature, woocommerce, contracts, icp-brasil
 Requires at least: 6.0
 Tested up to: 6.9
 Requires PHP: 8.1
-Stable tag: 1.3.0
+Stable tag: 1.3.1
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
-Assinatura eletrônica com validade jurídica: aceite simples, OTP, biometria, certificado ICP-Brasil, envelopes multi-signatário, auditoria e WP-CLI.
+Legally-binding e-signature for Brazil: OTP, biometrics, ICP-Brasil, multi-signer envelopes, audit log, WP-CLI, WooCommerce.
 
 == Description ==
 
-SignDocs Brasil é o plugin WordPress mais completo para **assinatura eletrônica com validade jurídica no Brasil**. Incorpore fluxos de assinatura em qualquer página com shortcode ou bloco Gutenberg, envie envelopes multi-signatário (sequenciais ou paralelos), verifique evidências assinadas dentro do próprio admin do WordPress, e acompanhe tudo via log de auditoria com exportação em CSV.
+SignDocs Brasil is the most complete WordPress plugin for **legally-binding electronic signatures in Brazil**. Embed signing flows on any page with a shortcode or Gutenberg block, send multi-signer envelopes (sequential or parallel), verify signed evidence directly from the WordPress admin, and track everything through an audit log with CSV export.
 
-Construído sobre o SDK PHP oficial do SignDocs Brasil (`signdocs-brasil/signdocs-brasil-php`), o plugin aproveita cache de token OAuth compartilhado entre workers do PHP-FPM, idempotência determinística, rotação de webhook secret com janela de graça, e observabilidade via headers `RateLimit-*` / `Deprecation` / `Sunset`.
+Built on top of the official SignDocs Brasil PHP SDK (`signdocs-brasil/signdocs-brasil-php`), the plugin leverages OAuth token caching shared across PHP-FPM workers, deterministic idempotency, webhook secret rotation with a grace window, and observability via `RateLimit-*` / `Deprecation` / `Sunset` response headers.
 
-= Por que SignDocs Brasil? =
+The plugin targets the Brazilian market (compliance with MP 2.200-2/2001, ICP-Brasil, NT65/ITI for INSS payroll loans), but works for any signing workflow worldwide. The signing UI itself is hosted on `sign.signdocs.com.br`, isolated from your WordPress install, so a compromised WordPress site cannot forge signatures.
 
-* **Conformidade brasileira** — MP 2.200-2/2001, pacote de evidências PKCS#7/CMS, certificado ICP-Brasil A1/A3, fluxo NT65/ITI para consignado INSS
-* **Sete políticas de verificação** — CLICK_ONLY, CLICK_PLUS_OTP, BIOMETRIC, BIOMETRIC_PLUS_OTP, DIGITAL_CERTIFICATE, BIOMETRIC_SERPRO, BIOMETRIC_SERPRO_AUTO_FALLBACK
-* **Multi-signatário** — envelopes sequenciais (cada signatário aguarda o anterior) ou paralelos (todos podem assinar simultaneamente), com download consolidado `.p7s` ou PDF combinado
-* **Dois modos de autenticação** — OAuth2 `client_credentials` (simples) ou Private Key JWT ES256 (para clientes regulados que não podem armazenar secrets compartilhados)
-* **Integração WooCommerce** — envia link de assinatura automaticamente após a conclusão do pedido
-* **Auditoria completa** — log de todos os eventos da API + webhooks em tabela dedicada, com interface WP_List_Table filtrável e exportação em CSV
-* **LGPD** — exportador e apagador de dados pessoais do signatário registrados no painel de privacidade do WordPress
-* **Observabilidade** — headers RateLimit capturados em widget do dashboard; avisos de obsolescência (RFC 8594 Deprecation/Sunset) surgem como admin notice automático
-* **Zero código** — configure tudo pelo painel do WordPress
+= Why SignDocs Brasil? =
 
-= Funcionalidades =
+* **Brazilian compliance** — MP 2.200-2/2001, PKCS#7/CMS evidence package, ICP-Brasil A1/A3 certificate support, NT65/ITI flow for INSS payroll loans
+* **Seven verification policies** — CLICK_ONLY, CLICK_PLUS_OTP, BIOMETRIC, BIOMETRIC_PLUS_OTP, DIGITAL_CERTIFICATE, BIOMETRIC_SERPRO, BIOMETRIC_SERPRO_AUTO_FALLBACK
+* **Multi-signer envelopes** — sequential (each signer waits for the previous one) or parallel (everyone signs simultaneously), with consolidated `.p7s` or combined PDF download when complete
+* **Two authentication modes** — OAuth2 `client_credentials` (simple) or Private Key JWT ES256 (for regulated customers who cannot store shared secrets at rest)
+* **WooCommerce integration** — automatically emails the signing link after order completion
+* **Complete audit trail** — every API call and webhook delivery is logged in a dedicated table with a filterable WP_List_Table view and CSV export
+* **GDPR / LGPD** — data exporter and eraser handlers registered with the WordPress privacy panel
+* **Observability** — `RateLimit-*` headers captured for the dashboard widget; deprecation warnings (RFC 8594 `Deprecation` / `Sunset`) surface as admin notices
+* **Zero code** — configure everything from the WordPress admin
 
-* Shortcode `[signdocs]` e bloco Gutenberg para incorporar o botão de assinatura em qualquer post ou página
-* Custom Post Type `signdocs_envelope` para workflows multi-signatário com repetidor de signatários
-* Página "Verificar Documento" — cole um evidence ID ou envelope ID e veja identidades dos signatários, CNPJ do tenant, downloads consolidados
-* Log de auditoria com filtros por nível, tipo de evento e intervalo de datas + exportação em CSV (streaming via `php://output`, seguro para GB)
-* Rotação de webhook secret com janela de graça de 7 dias — ambos os secrets (atual + anterior) aceitos durante a rotação
-* 17 tipos de evento de webhook cobertos, incluindo os eventos NT65 (`STEP.PURPOSE_DISCLOSURE_SENT`, `TRANSACTION.DEADLINE_APPROACHING`)
-* Capacidades customizadas (`signdocs_manage`, `signdocs_send`, `signdocs_verify`, `signdocs_view_logs`) atribuídas automaticamente a administrator / editor / author
-* WP-CLI (`wp signdocs health | send | status | webhook-test | log-tail`) para operações via shell
-* Integração WooCommerce — aba de produto "SignDocs Assinatura", email automático com link, notas de pedido após assinatura
-* Popup, redirecionamento ou overlay — escolha o modo que melhor funciona no seu tema
-* Assinatura anônima (opcional) com rate limiting
-* Credenciais criptografadas em AES-256-CBC no `wp_options`
-* Webhook hardening: verificação de drift de timestamp (≤300s), HMAC-SHA256 timing-safe, dedup por `X-SignDocs-Webhook-Id`
-* Cache de token OAuth compartilhado via transients (`WpTransientTokenCache` implementa `TokenCacheInterface` do SDK) — um único token reutilizado por todos os workers do PHP-FPM
-* Idempotency key determinística em toda criação de recurso — retries de AJAX não criam sessões duplicadas
-* Observador de deprecação (RFC 8594) que surge como admin notice quando a API sinaliza que um endpoint será removido
-* Multilíngue: Português (Brasil), English, Español
+= Features =
 
-= Casos de Uso =
+* Shortcode `[signdocs]` and Gutenberg block to embed the signing button on any post or page
+* Custom post type `signdocs_envelope` for multi-signer workflows with a signer repeater
+* "Verify Document" admin page — paste an evidence ID or envelope ID and inspect signer identities, tenant CNPJ, consolidated downloads
+* Audit log with filters by level, event type, and date range, plus streaming CSV export (via `php://output`, safe for multi-GB exports)
+* Webhook secret rotation with a 7-day grace window — both secrets (current + previous) are accepted during rotation
+* All 17 webhook event types covered, including the NT65 events (`STEP.PURPOSE_DISCLOSURE_SENT`, `TRANSACTION.DEADLINE_APPROACHING`)
+* Custom capabilities (`signdocs_manage`, `signdocs_send`, `signdocs_verify`, `signdocs_view_logs`) automatically granted to administrator / editor / author
+* WP-CLI commands (`wp signdocs health | send | status | webhook-test | log-tail`) for shell automation
+* WooCommerce integration — "SignDocs Signature" product tab, automatic email with the signing link, order notes after completion
+* Popup, redirect, or overlay — pick the embed mode that fits your theme
+* Optional anonymous signing with rate limiting
+* Credentials encrypted with AES-256-CBC in `wp_options`
+* Hardened webhook receiver: timestamp drift gate (≤300s), HMAC-SHA256 timing-safe verification, replay de-duplication via `X-SignDocs-Webhook-Id`
+* OAuth token cache shared via WordPress transients (`WpTransientTokenCache` implements the SDK's `TokenCacheInterface`) — a single token reused by every PHP-FPM worker
+* Deterministic idempotency keys on every resource-creating call — AJAX retries never create duplicate sessions
+* Deprecation observer (RFC 8594) that surfaces an admin notice when the API signals an endpoint is being removed
+* Translatable: English, Portuguese (Brazil), Spanish
 
-* **Advogados e escritórios** — procurações, contratos, termos, envelopes multi-parte
-* **Imobiliárias** — contratos de locação e compra/venda assinados por inquilino, proprietário e fiador (envelope sequencial)
-* **E-commerce** — termos de serviço, contratos de fornecedor, NDA pós-compra
-* **RH e departamento pessoal** — contratos de trabalho, termos de confidencialidade, ficha de admissão
-* **Educação** — matrículas e termos de responsabilidade (pais + aluno em envelope paralelo)
-* **SaaS** — termos de uso e contratos de licença no onboarding
-* **Crédito consignado INSS** — fluxo NT65 com certificado biométrico SERPRO e notificação de divulgação de finalidade
-* **Bancos e instituições financeiras** — Private Key JWT permite assinar sem armazenar secret compartilhado no banco de dados
+= Use cases =
 
-= Como Funciona =
+* **Law firms** — powers of attorney, contracts, terms, multi-party envelopes
+* **Real estate** — rental and sale contracts signed by tenant, landlord, and guarantor (sequential envelope)
+* **E-commerce** — terms of service, supplier contracts, post-purchase NDAs
+* **HR and people ops** — employment contracts, NDAs, onboarding paperwork
+* **Education** — enrollment forms and parental consent (parents + student in a parallel envelope)
+* **SaaS** — terms of use and license agreements at onboarding
+* **INSS payroll loans (Brazil-specific)** — NT65 flow with SERPRO biometric verification and purpose disclosure notification
+* **Banks and financial institutions** — Private Key JWT lets you sign without storing a shared secret in the database
 
-1. Configure suas credenciais da API SignDocs Brasil no painel WordPress (Client ID + Secret, ou Private Key + Key ID)
-2. Adicione um shortcode, bloco Gutenberg ou crie um envelope multi-signatário no admin
-3. O signatário clica em "Assinar Documento" e é redirecionado para o domínio seguro `sign.signdocs.com.br` (a assinatura **nunca acontece dentro do seu WordPress** — isso isola sua instalação de qualquer compromisso)
-4. O signatário completa o fluxo de acordo com a política configurada (click, OTP, biometria, certificado digital)
-5. Webhooks atualizam o status no painel WordPress em tempo real; o pacote de evidências `.p7m` fica disponível para download e verificação
+= How it works =
+
+1. Configure your SignDocs Brasil API credentials in the WordPress admin (Client ID + Secret, or Private Key + Key ID)
+2. Add a shortcode, Gutenberg block, or create a multi-signer envelope from the admin
+3. The signer clicks "Sign Document" and is redirected to the secure domain `sign.signdocs.com.br` (signing **never happens inside your WordPress site** — this isolates your install from any compromise)
+4. The signer completes the flow according to the configured policy (click, OTP, biometrics, digital certificate)
+5. Webhooks update the status in the WordPress admin in real time; the `.p7m` evidence package becomes available for download and verification
 
 = Links =
 
-* [Site oficial](https://signdocs.com.br)
-* [Documentação da API](https://docs.signdocs.com.br)
-* [Suporte](https://signdocs.com.br/suporte)
-* [Criar conta gratuita](https://app.signdocs.com.br/cadastro)
-* [Repositório no GitHub](https://github.com/signdocsbrasil/signdocs-brasil-wordpress)
+* [Official site](https://signdocs.com.br)
+* [API documentation](https://docs.signdocs.com.br)
+* [Support](https://signdocs.com.br/suporte)
+* [Create a free account](https://app.signdocs.com.br/cadastro)
+* [GitHub repository](https://github.com/signdocsbrasil/signdocs-brasil-wordpress)
 
 == Installation ==
 
-= Instalação automática =
+= Automatic install =
 
-1. No painel WordPress, vá em Plugins > Adicionar Novo
-2. Pesquise por "SignDocs Brasil"
-3. Clique em "Instalar" e depois "Ativar"
+1. In the WordPress admin, go to Plugins > Add New
+2. Search for "SignDocs Brasil"
+3. Click "Install" and then "Activate"
 
-= Instalação manual =
+= Manual install =
 
-1. Faça upload da pasta `signdocs-brasil` para `/wp-content/plugins/` (ou use Plugins > Enviar Plugin com o ZIP da release)
-2. Ative o plugin em Plugins > Plugins Instalados
+1. Upload the `signdocs-brasil` folder to `/wp-content/plugins/` (or use Plugins > Upload Plugin with the release ZIP)
+2. Activate the plugin in Plugins > Installed Plugins
 
-Na ativação, o plugin:
+On activation, the plugin:
 
-* Cria a tabela `{prefix}signdocs_log` para auditoria
-* Registra os CPTs `signdocs_signing` e `signdocs_envelope`
-* Concede as capacidades customizadas (`signdocs_manage`, `signdocs_send`, `signdocs_verify`, `signdocs_view_logs`) a administrator / editor / author
-* Agenda os crons diários de poda de log e expiração de secret rotacionado
+* Creates the `{prefix}signdocs_log` table for the audit log
+* Registers the `signdocs_signing` and `signdocs_envelope` custom post types
+* Grants the custom capabilities (`signdocs_manage`, `signdocs_send`, `signdocs_verify`, `signdocs_view_logs`) to administrator / editor / author
+* Schedules the daily cron jobs for log pruning and rotated-secret expiration
 
-= Configuração =
+= Configuration =
 
-1. Acesse Configurações > SignDocs Brasil
-2. Escolha o método de autenticação:
-   * **Client Secret** (padrão) — Client ID + Client Secret obtidos em [app.signdocs.com.br](https://app.signdocs.com.br)
-   * **Private Key JWT (ES256)** — chave privada PEM + Key ID; a chave pública é registrada separadamente com o SignDocs. Preferido por clientes regulados que não podem armazenar secrets compartilhados no banco
-3. Clique em "Testar Conexão"
-4. Selecione o ambiente: HML (sandbox para testes) ou Produção
-5. Configure os padrões de assinatura (perfil, idioma, modo, cor da marca, logo)
-6. Clique em "Registrar Webhook" — o plugin chama o endpoint da API, recebe o secret HMAC, e armazena encriptado
-7. (Opcional) Configure `signdocs_trusted_proxies` com CIDRs confiáveis se seu site estiver atrás de CloudFront / Cloudflare / nginx proxy, para que o rate-limiter anônimo e o log de auditoria vejam o IP real do cliente
+1. Open Settings > SignDocs Brasil
+2. Choose the authentication method:
+   * **Client Secret** (default) — Client ID + Client Secret obtained from [app.signdocs.com.br](https://app.signdocs.com.br)
+   * **Private Key JWT (ES256)** — PEM-encoded private key + Key ID; the public key is registered separately with SignDocs. Preferred by regulated customers that cannot store a shared secret in the database
+3. Click "Test Connection"
+4. Select the environment: HML (sandbox for testing) or Production
+5. Configure the signing defaults (policy, locale, mode, brand color, logo)
+6. Click "Register Webhook" — the plugin calls the API endpoint, receives the HMAC secret, and stores it encrypted
+7. (Optional) Configure `signdocs_trusted_proxies` with trusted CIDR ranges if your site sits behind CloudFront, Cloudflare, or an nginx proxy, so the anonymous-signing rate limiter and audit log see the real client IP
 
 == Usage ==
 
 = Shortcode =
 
-Adicione em qualquer página ou post:
+Add to any page or post:
 
-`[signdocs document_id="123" policy="CLICK_ONLY" button_text="Assinar Contrato"]`
+`[signdocs document_id="123" policy="CLICK_ONLY" button_text="Sign Contract"]`
 
-Com formulário de nome e email:
+With name / email / CPF form:
 
 `[signdocs document_id="123" show_form="true" policy="CLICK_PLUS_OTP"]`
 
-**Atributos disponíveis:**
+**Available attributes:**
 
-* `document_id` (obrigatório) — ID do anexo PDF na biblioteca de mídia
-* `policy` — Perfil: `CLICK_ONLY`, `CLICK_PLUS_OTP`, `BIOMETRIC`, `BIOMETRIC_PLUS_OTP`, `DIGITAL_CERTIFICATE`, `BIOMETRIC_SERPRO`, `BIOMETRIC_SERPRO_AUTO_FALLBACK`
-* `locale` — Idioma: `pt-BR`, `en`, `es`
-* `mode` — Modo: `redirect` (padrão), `popup`, `overlay`
-* `button_text` — Texto do botão (padrão: "Assinar Documento")
-* `show_form` — "true" para exibir campos de nome/email
-* `return_url` — URL de retorno após assinatura
-* `class` — Classe CSS adicional para o botão
+* `document_id` (required) — ID of the PDF attachment in the media library
+* `policy` — one of: `CLICK_ONLY`, `CLICK_PLUS_OTP`, `BIOMETRIC`, `BIOMETRIC_PLUS_OTP`, `DIGITAL_CERTIFICATE`, `BIOMETRIC_SERPRO`, `BIOMETRIC_SERPRO_AUTO_FALLBACK`
+* `locale` — language: `pt-BR`, `en`, `es`
+* `mode` — embed mode: `redirect` (default), `popup`, `overlay`
+* `button_text` — button label (default: "Sign Document")
+* `show_form` — `"true"` to display name / email / CPF / CNPJ inputs
+* `return_url` — URL to redirect to after signing
+* `class` — additional CSS class for the button
 
-= Bloco Gutenberg =
+= Gutenberg block =
 
-1. No editor de blocos, clique em "+" para adicionar um bloco
-2. Pesquise por "SignDocs" ou "Assinatura"
-3. Selecione um PDF pela barra lateral
-4. Configure o perfil de assinatura, idioma e modo
-5. Publique a página
+1. In the block editor, click "+" to add a block
+2. Search for "SignDocs" or "Signature"
+3. Pick a PDF in the right sidebar
+4. Configure the policy, locale, and mode
+5. Publish the page
 
-= Envelopes Multi-Signatário =
+= Multi-signer envelopes =
 
-Para contratos com mais de um signatário (ex: locador + locatário + fiador), use o menu **Envelopes**:
+For contracts with more than one signer (for example, landlord + tenant + guarantor), use the **Envelopes** menu:
 
-1. WP Admin > Signatures > Envelopes > Adicionar Novo
-2. Selecione o modo de assinatura:
-   * **SEQUENTIAL** — cada signatário assina em ordem; o próximo só recebe o link quando o anterior completa
-   * **PARALLEL** — todos os signatários podem assinar simultaneamente em qualquer ordem
-3. Adicione os signatários (nome + email + política individual por signatário, se desejar)
-4. Anexe o PDF e publique
-5. Cada signatário recebe um email com seu link individual; o admin vê o status do envelope atualizar conforme cada assinatura é completada
-6. Após todos assinarem, um PDF carimbado combinado (ou `.p7s` consolidado para documentos não-PDF) fica disponível para download
+1. WP Admin > Signatures > Envelopes > Add New
+2. Select the signing mode:
+   * **SEQUENTIAL** — each signer signs in order; the next signer only receives their link when the previous one completes
+   * **PARALLEL** — all signers can sign simultaneously, in any order
+3. Add the signers (name + email + CPF or CNPJ + optional per-signer policy)
+4. Attach the PDF and publish
+5. Each signer receives an email with their individual link; the admin sees the envelope status update as each signature completes
+6. After everyone has signed, a combined stamped PDF (or consolidated `.p7s` for non-PDF documents) becomes available for download
 
-Eventos de webhook `STEP.STARTED`, `STEP.COMPLETED` e `STEP.FAILED` são registrados por signatário no log de cada envelope.
+The webhook events `STEP.STARTED`, `STEP.COMPLETED`, and `STEP.FAILED` are recorded per signer in each envelope's log.
 
 = WooCommerce =
 
-1. Edite um produto e acesse a aba "SignDocs Assinatura"
-2. Marque "Requer assinatura" e selecione o PDF
-3. Configure a política de verificação
-4. Quando o pedido for concluído, o link de assinatura é enviado ao cliente automaticamente
-5. Após a assinatura, uma nota é adicionada ao pedido com o ID de evidência
+1. Edit a product and open the "SignDocs Signature" tab
+2. Check "Requires signature" and select the PDF
+3. Configure the verification policy
+4. When an order completes, the signing link is automatically emailed to the customer
+5. After signing, an order note is added with the evidence ID
 
-= Verificação de Documentos =
+> The customer's CPF or CNPJ must be present in the order. The plugin reads the standard `_billing_cpf` / `_billing_cnpj` order meta keys used by the [Brazilian Market on WooCommerce](https://wordpress.org/plugins/woocommerce-extra-checkout-fields-for-brazil/) extension. If neither is present, the plugin adds an order note explaining the requirement and skips session creation.
 
-Página **Signatures > Verificar** (requer capacidade `signdocs_verify`):
+= Document verification =
 
-1. Cole um `evidence_id` (assinatura individual) ou `envelope_id` (multi-signatário)
-2. O plugin chama `GET /v1/verify/{id}` ou `GET /v1/verify/envelope/{id}` e renderiza:
-   * Identidades de todos os signatários (nome, CPF/CNPJ)
-   * CNPJ do tenant
-   * Timestamps de cada passo
-   * Perfil de política aplicado
-   * Links de download: pacote de evidências (`.p7m`), PDF assinado, `.p7s` consolidado (envelopes), PDF combinado (envelopes)
-3. Use os arquivos de evidência em validadores externos (ITI Validador, Adobe Acrobat) para confirmação independente
+The **Signatures > Verify** page (requires the `signdocs_verify` capability):
 
-= Log de Auditoria =
+1. Paste an `evidence_id` (single signature) or `envelope_id` (multi-signer)
+2. The plugin calls `GET /v1/verify/{id}` or `GET /v1/verify/envelope/{id}` and renders:
+   * Identities of every signer (name, CPF/CNPJ)
+   * Tenant CNPJ
+   * Timestamps for each step
+   * The applied policy profile
+   * Download links: evidence package (`.p7m`), signed PDF, consolidated `.p7s` (envelopes), combined PDF (envelopes)
+3. Use the evidence files in external validators (ITI Validador, Adobe Acrobat) for independent confirmation
 
-Página **Signatures > Audit Log** (requer capacidade `signdocs_view_logs`):
+= Audit log =
 
-* Visualização WP_List_Table sobre `{prefix}signdocs_log`
-* Filtros: nível (debug/info/warning/error), tipo de evento, intervalo de datas
-* Exportação em CSV via admin-post.php (streaming em chunks, suporta exports multi-GB)
-* Retenção automática de 30 dias (cron diário `signdocs_prune_logs`)
-* Cada chamada à API, entrega de webhook, e aviso de obsolescência é registrado com contexto JSON
+The **Signatures > Audit Log** page (requires the `signdocs_view_logs` capability):
+
+* WP_List_Table view over `{prefix}signdocs_log`
+* Filters: level (debug / info / warning / error), event type, date range
+* CSV export via `admin-post.php` (chunked streaming, safe for multi-GB exports)
+* Automatic 30-day retention via the daily `signdocs_prune_logs` cron
+* Every API call, webhook delivery, and deprecation warning is recorded with JSON context
 
 = WP-CLI =
 
-Para operações via shell (útil para automação, CI/CD e troubleshooting):
+For shell-based operations (useful for automation, CI/CD, and troubleshooting):
 
 `wp signdocs health`
-— verifica conectividade com a API no ambiente configurado
+— check connectivity to the API in the configured environment
 
-`wp signdocs send --document=42 --email=joao@example.com --policy=CLICK_PLUS_OTP`
-— cria uma sessão de assinatura a partir de um anexo do WordPress e imprime sessionId + URL
+`wp signdocs send --document=42 --email=alice@example.com --cpf=12345678901 --policy=CLICK_PLUS_OTP`
+— create a signing session from a WordPress attachment and print the session ID and URL
 
 `wp signdocs status <sessionId>`
-— consulta o status de uma sessão pelo ID
+— look up the status of a session by ID
 
 `wp signdocs webhook-test <webhookId>`
-— dispara uma entrega de teste para o webhook registrado
+— send a test delivery to a registered webhook
 
 `wp signdocs log-tail --level=warning --limit=20`
-— mostra as últimas N entradas do log de auditoria filtradas por nível
+— show the last N entries of the audit log filtered by level
 
-= Rotação de Webhook Secret =
+= Webhook secret rotation =
 
-1. Em Configurações > SignDocs Brasil, clique em "Rotacionar Secret"
-2. O plugin solicita um novo secret à API; o antigo passa a ser o "previous secret" com janela de graça de 7 dias
-3. Durante a janela, o endpoint `/wp-json/signdocs/v1/webhook` aceita **ambos** os secrets — entregas em voo não são rejeitadas
-4. Após 7 dias, o cron diário `signdocs_expire_prev_secret` remove o secret antigo
-5. Status da rotação fica visível no admin (contador regressivo)
+1. In Settings > SignDocs Brasil, click "Rotate Secret"
+2. The plugin requests a new secret from the API; the previous secret becomes the "previous secret" with a 7-day grace window
+3. During the window, the `/wp-json/signdocs/v1/webhook` endpoint accepts **both** secrets — in-flight deliveries are not rejected
+4. After 7 days, the daily `signdocs_expire_prev_secret` cron removes the old secret
+5. The rotation status is visible in the admin (with a countdown)
 
-= Para Desenvolvedores =
+= For developers =
 
-**Hooks disponíveis:**
+**Available hooks:**
 
-Lifecycle de sessão:
+Session lifecycle:
 
-* `signdocs_session_created` — Sessão criada (via API, não necessariamente via WP)
-* `signdocs_signing_completed` — Assinatura concluída com sucesso
-* `signdocs_signing_cancelled` — Assinatura cancelada pelo integrador ou usuário
-* `signdocs_signing_expired` — Sessão expirou sem conclusão
-* `signdocs_signing_failed` — Assinatura falhou (erro irrecuperável)
-* `signdocs_transaction_fallback` — Fallback acionado (ex: SERPRO sem biometria)
+* `signdocs_session_created` — Session created (via the API, not necessarily via WordPress)
+* `signdocs_signing_completed` — Signing completed successfully
+* `signdocs_signing_cancelled` — Signing cancelled by the integrator or the signer
+* `signdocs_signing_expired` — Session expired without completion
+* `signdocs_signing_failed` — Signing failed (unrecoverable error)
+* `signdocs_transaction_fallback` — Fallback was triggered (e.g., SERPRO unavailable)
 
-Per-step (para envelopes e fluxos customizados):
+Per-step (for envelopes and custom flows):
 
-* `signdocs_step_started` — Etapa iniciada (OTP enviado, biometria capturada, etc.)
-* `signdocs_step_completed` — Etapa concluída
-* `signdocs_step_failed` — Etapa falhou
-* `signdocs_purpose_disclosure_sent` — (NT65) Notificação de finalidade enviada ao beneficiário
-* `signdocs_deadline_approaching` — (NT65) ≤2 dias úteis para o prazo de submissão ao INSS
+* `signdocs_step_started` — Step started (OTP sent, biometric capture, etc.)
+* `signdocs_step_completed` — Step completed
+* `signdocs_step_failed` — Step failed
+* `signdocs_purpose_disclosure_sent` — (NT65) Purpose disclosure notification delivered to the beneficiary
+* `signdocs_deadline_approaching` — (NT65) ≤2 business days left before the INSS submission deadline
 
-Tenant/API:
+Tenant / API:
 
-* `signdocs_quota_warning` — Uso do tenant cruzou limiar (80/90/100%)
-* `signdocs_api_deprecation_notice` — API sinalizou endpoint deprecated
+* `signdocs_quota_warning` — Tenant usage crossed a threshold (80 / 90 / 100%)
+* `signdocs_api_deprecation_notice` — API signaled a deprecated endpoint
 
 WooCommerce:
 
-* `signdocs_wc_signing_completed` — Assinatura de pedido WooCommerce concluída
+* `signdocs_wc_signing_completed` — A WooCommerce order signing completed
 
-Todas as actions recebem `$post_id` (do CPT `signdocs_signing` ou `signdocs_envelope`) e `$payload` (array com o webhook recebido) como argumentos, exceto `signdocs_quota_warning` e `signdocs_api_deprecation_notice` que recebem apenas o payload.
+Each action receives `$post_id` (of the `signdocs_signing` or `signdocs_envelope` CPT) and `$payload` (the raw webhook array) as arguments, except `signdocs_quota_warning` and `signdocs_api_deprecation_notice` which receive only the payload.
 
-**Capacidades:**
+**Capabilities:**
 
-* `signdocs_manage` — Configurar credenciais, webhook, branding; gerenciar envelopes de outros usuários
-* `signdocs_send` — Criar sessões e envelopes
-* `signdocs_verify` — Usar a página Verificar e inspecionar evidências
-* `signdocs_view_logs` — Acessar o log de auditoria e exportar CSV
+* `signdocs_manage` — Configure credentials, webhook, branding; manage other users' envelopes
+* `signdocs_send` — Create sessions and envelopes
+* `signdocs_verify` — Use the Verify page and inspect evidence
+* `signdocs_view_logs` — Access the audit log and export CSV
 
-Use `current_user_can('signdocs_send')` em vez de `manage_options` / `edit_posts` ao adicionar funcionalidades custom.
+Use `current_user_can('signdocs_send')` instead of `manage_options` / `edit_posts` when adding custom functionality.
 
-**SDK PHP:**
+**PHP SDK:**
 
-O cliente SDK configurado com credenciais criptografadas e cache de token compartilhado está disponível via:
+The configured SDK client (with encrypted credentials and shared token cache) is available via:
 
-`$client = Signdocs_Client_Factory::get(); // SignDocsBrasil\Api\SignDocsBrasilClient ou null`
+`$client = Signdocs_Client_Factory::get(); // SignDocsBrasil\Api\SignDocsBrasilClient or null`
 
-Consulte [a documentação do SDK PHP](https://github.com/signdocsbrasil/signdocs-brasil-php) para o surface completo (transactions, envelopes, verification, users, documentGroups, webhooks, etc.).
+See the [PHP SDK documentation](https://github.com/signdocsbrasil/signdocs-brasil-php) for the full surface (transactions, envelopes, verification, users, documentGroups, webhooks, etc.).
 
 == Frequently Asked Questions ==
 
-= Preciso de uma conta SignDocs Brasil? =
+= Do I need a SignDocs Brasil account? =
 
-Sim. [Crie sua conta gratuita](https://app.signdocs.com.br/cadastro) para obter credenciais de API. O plano gratuito inclui documentos para teste no ambiente HML.
+Yes. [Create your free account](https://app.signdocs.com.br/cadastro) to obtain API credentials. The free plan includes test documents in the HML (sandbox) environment.
 
-= A assinatura tem validade jurídica? =
+= Are these signatures legally binding? =
 
-Sim. As assinaturas eletrônicas do SignDocs Brasil seguem a Medida Provisória 2.200-2/2001 e geram pacotes de evidência criptográficos (PKCS#7/CMS) com trilha de auditoria completa. Para documentos de alto valor ou exigência de ICP-Brasil, use a política `DIGITAL_CERTIFICATE` com certificado A1 ou A3 do signatário.
+Yes. SignDocs Brasil electronic signatures comply with Brazilian Provisional Measure 2.200-2/2001 and produce cryptographic evidence packages (PKCS#7/CMS) with a complete audit trail. For high-value documents or where ICP-Brasil is required, use the `DIGITAL_CERTIFICATE` policy with the signer's A1 or A3 certificate.
 
-= Onde a assinatura acontece de fato? =
+= Where does the signing actually happen? =
 
-No domínio seguro `sign.signdocs.com.br`, **não dentro do seu WordPress**. O plugin cria a sessão via API (server-side, credenciais nunca chegam ao navegador), entrega ao navegador uma URL + clientSecret, e recebe um webhook quando completa. Isso significa que, mesmo se seu WordPress fosse comprometido, um atacante não poderia forjar assinaturas — o fluxo de autenticação (OTP, biometria, certificado) acontece em um domínio completamente separado sob controle do SignDocs.
+On the secure domain `sign.signdocs.com.br`, **not inside your WordPress site**. The plugin creates the session via the API server-side (credentials never reach the browser), hands a URL + `clientSecret` to the browser, and receives a webhook when complete. This means that even if your WordPress site were compromised, an attacker could not forge signatures — the authentication flow (OTP, biometrics, certificate) happens on a completely separate domain under SignDocs' control.
 
-= Como funcionam os envelopes multi-signatário? =
+= How do multi-signer envelopes work? =
 
-Cada envelope tem N signatários. Modo **SEQUENTIAL**: o próximo signatário só recebe o link após o anterior completar (útil para fluxos hierárquicos como procuração → testemunha → tabelião). Modo **PARALLEL**: todos podem assinar simultaneamente (útil para NDAs multi-parte, contratos de sociedade). O painel de administração do envelope mostra o status de cada signatário em tempo real conforme os webhooks `STEP.*` chegam. Após o último signatário, um PDF combinado (ou `.p7s` consolidado para não-PDFs) fica disponível via a página "Verificar".
+Each envelope has N signers. **SEQUENTIAL** mode: the next signer only receives their link after the previous one completes (useful for hierarchical flows like power of attorney → witness → notary). **PARALLEL** mode: everyone can sign simultaneously (useful for multi-party NDAs, partnership agreements). The envelope admin panel shows each signer's status in real time as the `STEP.*` webhooks arrive. After the last signer, a combined PDF (or consolidated `.p7s` for non-PDFs) becomes available via the Verify page.
 
-= Posso usar sem armazenar um secret compartilhado? =
+= Can I use this without storing a shared secret? =
 
-Sim. Na aba de autenticação das configurações, escolha **Private Key JWT (ES256)**. Você gera um par de chaves ECDSA P-256 localmente, fornece apenas a chave pública ao SignDocs (via painel do [app.signdocs.com.br](https://app.signdocs.com.br)), e o plugin armazena apenas a chave privada PEM (criptografada em AES-256-CBC). A cada chamada à API, o plugin assina um JWT de curta duração com a chave privada — não há secret compartilhado no banco. Este modo é exigido por alguns clientes regulados (bancos, fintechs).
+Yes. In the authentication tab of the settings, choose **Private Key JWT (ES256)**. You generate an ECDSA P-256 key pair locally, register only the public key with SignDocs (via the [app.signdocs.com.br](https://app.signdocs.com.br) panel), and the plugin stores only the PEM private key (encrypted with AES-256-CBC). On every API call the plugin signs a short-lived JWT with the private key — no shared secret in the database. This mode is required by some regulated customers (banks, fintechs).
 
-= O log de auditoria registra o quê? =
+= What does the audit log capture? =
 
-Cada chamada à API feita pelo plugin (método, caminho, status, duração, rate limit remaining), cada entrega de webhook recebida (ID, tipo, signer, match), cada aviso de obsolescência emitido pela API (RFC 8594 Deprecation/Sunset), e cada operação admin (criar sessão, rotacionar secret, etc.). Retenção de 30 dias; podado por cron diário. Exportável em CSV para SIEM externo.
+Every API call the plugin makes (method, path, status, duration, rate-limit remaining), every webhook delivery received (ID, type, signer, match), every deprecation warning emitted by the API (RFC 8594 `Deprecation` / `Sunset`), and every admin operation (create session, rotate secret, etc.). 30-day retention; pruned by a daily cron. Exportable to CSV for an external SIEM.
 
-= E a LGPD? =
+= What about LGPD / GDPR? =
 
-O plugin registra handlers em `wp_privacy_personal_data_exporters` e `wp_privacy_personal_data_erasers`:
+The plugin registers handlers in `wp_privacy_personal_data_exporters` and `wp_privacy_personal_data_erasers`:
 
-* **Exportador** — retorna todas as sessões associadas ao email do titular (nome, emails, session ID, evidence ID, status, timestamps)
-* **Apagador** — redige nome e email do signatário para `[redacted-<hash8>]`, mas **preserva** o evidence ID, transaction ID, session ID e timestamps. Motivo: a legislação de assinatura eletrônica exige retenção da evidência pelo período legal, mesmo após pedido de apagamento. A identidade é redigida localmente; o pacote de evidências no servidor permanece íntegro para auditoria legal futura.
+* **Exporter** — returns every session associated with the data subject's email (name, emails, session ID, evidence ID, status, timestamps)
+* **Eraser** — redacts the signer's name and email to `[redacted-<hash8>]`, but **preserves** the evidence ID, transaction ID, session ID, and timestamps. Reason: electronic-signature law requires evidence retention for the legal retention period, even after a request to erase. Identity is redacted locally; the evidence package on the server stays intact for future legal audits.
 
-= O plugin funciona sem WooCommerce? =
+= Does the plugin work without WooCommerce? =
 
-Sim. A integração com WooCommerce é opcional e só é carregada quando o WooCommerce está ativo. Shortcode, bloco Gutenberg, envelopes, página Verificar, log de auditoria e WP-CLI funcionam independentemente.
+Yes. The WooCommerce integration is optional and only loads when WooCommerce is active. The shortcode, Gutenberg block, envelopes, Verify page, audit log, and WP-CLI all work independently.
 
-= Posso testar sem custos? =
+= Can I test for free? =
 
-Sim. Configure o ambiente como "HML (Sandbox)" nas configurações. Dados de teste, OTP simulado (`000000` ou `123456` sempre aceitos), biometria mockada, nenhuma cobrança.
+Yes. Set the environment to "HML (Sandbox)" in the settings. Test data, simulated OTP (`000000` or `123456` are always accepted), mocked biometrics, no charges.
 
-= Qual o tamanho máximo do PDF? =
+= What is the maximum PDF size? =
 
-O plugin aceita PDFs de até 15 MB. Para arquivos maiores, ajuste `upload_max_filesize` e `memory_limit` no PHP e o tenant precisa estar configurado para documentos grandes no SignDocs.
+The plugin accepts PDFs up to 15 MB. For larger files, increase `upload_max_filesize` and `memory_limit` in PHP and ensure your tenant is configured for large documents on SignDocs.
 
-= Funciona com qualquer tema WordPress? =
+= Does it work with any WordPress theme? =
 
-Sim. O plugin usa estilos mínimos e respeita a hierarquia CSS do seu tema. O botão pode ser personalizado via classe CSS ou a cor da marca.
+Yes. The plugin uses minimal styles and respects your theme's CSS hierarchy. The button can be customized via a CSS class or via the brand color setting.
 
-= Os dados do signatário são seguros? =
+= Is signer data secure? =
 
-Sim. As credenciais da API são criptografadas no banco (AES-256-CBC com chave derivada de `wp_salt`). Tokens OAuth são armazenados em transients (nunca no banco de dados permanente). Secrets de webhook são criptografados. A chave privada JWT (quando usada) também é criptografada. O HMAC de webhook é validado em tempo constante (SDK). Dedup de webhook via transient lock previne replay attacks.
+Yes. API credentials are encrypted in the database (AES-256-CBC with a key derived from `wp_salt`). OAuth tokens live in transients (never in permanent options). Webhook secrets are encrypted. The JWT private key (when used) is also encrypted. Webhook HMAC verification is constant-time (handled by the SDK). Webhook de-duplication via a transient lock prevents replay attacks.
 
-= Posso personalizar o visual da página de assinatura? =
+= Can I customize the look of the signing page? =
 
-Sim. Configure cor da marca e logotipo nas configurações do plugin. A página hospedada em `sign.signdocs.com.br` exibirá sua identidade visual. Para customização mais profunda, fale com o suporte — personalizações corporativas estão disponíveis no plano Enterprise.
+Yes. Configure the brand color and logo in the plugin settings. The page hosted at `sign.signdocs.com.br` will display your visual identity. For deeper customization, contact support — corporate-level theming is available on the Enterprise plan.
 
-= Funciona atrás de CloudFront / Cloudflare / nginx proxy? =
+= Does it work behind CloudFront / Cloudflare / nginx proxy? =
 
-Sim. Defina `signdocs_trusted_proxies` como uma lista de CIDRs confiáveis (ex: `10.0.0.0/8, 172.16.0.0/12`). O plugin usa `X-Forwarded-For` apenas quando o `REMOTE_ADDR` está em um range confiável, evitando spoofing do IP do cliente no rate limiter e no log de auditoria.
+Yes. Set `signdocs_trusted_proxies` to a list of trusted CIDR ranges (e.g., `10.0.0.0/8, 172.16.0.0/12`). The plugin uses `X-Forwarded-For` only when `REMOTE_ADDR` is in a trusted range, preventing IP spoofing in the rate limiter and audit log.
+
+= Is the plugin available in Portuguese? =
+
+Yes. All user-facing strings are translatable (`signdocs-brasil` text domain) and the plugin ships with Brazilian Portuguese (`pt_BR`) and Spanish (`es_ES`) translations. WordPress automatically loads the right language pack based on your site's locale setting.
 
 == Screenshots ==
 
-1. Página de configurações — credenciais, ambiente, método de autenticação (client_secret ou Private Key JWT), padrões de assinatura
-2. Bloco Gutenberg no editor com painel de configuração à direita
-3. Shortcode renderizado com botão de assinatura no front-end
-4. Popup de assinatura aberto pelo `@signdocs-brasil/js` SDK em `sign.signdocs.com.br`
-5. Lista de assinaturas no painel administrativo com status colorido, signatário, perfil
-6. Página "Verificar Documento" — evidence ID colado, resultado com signatários, CNPJ do tenant, downloads
-7. Painel de envelope multi-signatário com repetidor de signatários e toggle sequencial/paralelo
-8. Log de auditoria (WP_List_Table) com filtros de nível, evento, data e botão de exportação CSV
-9. Aba de produto WooCommerce com configuração de assinatura obrigatória
-10. Email de pedido WooCommerce com link de assinatura
+1. Settings page — credentials, environment, authentication method (client_secret or Private Key JWT), signing defaults
+2. Gutenberg block in the editor with the configuration panel on the right
+3. Shortcode rendered with the signing button on the front-end
+4. Signing popup opened by the `@signdocs-brasil/js` SDK on `sign.signdocs.com.br`
+5. Signatures list in the admin panel with colored status, signer, policy
+6. "Verify Document" page — evidence ID pasted, result with signers, tenant CNPJ, downloads
+7. Multi-signer envelope panel with the signer repeater and sequential / parallel toggle
+8. Audit log (WP_List_Table) with level / event / date filters and the CSV export button
+9. WooCommerce product tab with required-signature configuration
+10. WooCommerce order email with the signing link
 
 == Changelog ==
 
+= 1.3.1 =
+
+WP.org submission readiness — Plugin Check (PCP) baseline + canonical English readme + complete CPF/CNPJ collection.
+
+* **Plugin Check: 0 ERRORs** — fixed 12 PCP error-level findings: 4× missing `defined('ABSPATH')` guards in `src/Admin/{VerifyPage,AuditTable}.php`, `src/Cpt/EnvelopeCpt.php`, `src/Webhook/Controller.php`; 3× missing `translators:` comments on `__()` calls with placeholders in WooCommerce integration; 2× output escape gaps in WooCommerce email body; 1× output escape gap on the CPT status badge (now via `wp_kses_post()`); `strip_tags()` → `wp_strip_all_tags()` in the unit-test fallback path of `Filters`; documented `fopen` / `fwrite` / `fclose` in `AuditExport` as a streaming-CSV pattern with file-scoped `phpcs:ignore`.
+* **Canonical readme rewritten in English.** WP.org policy 2025-07-28 requires the description, short description, and FAQ to be in English. The old Portuguese sections move to the standard i18n flow — `pt_BR` site visitors will see the localized strings via WordPress.org's automatic translation pack delivery once the plugin is approved.
+* **Removed `load_plugin_textdomain()`** — discouraged since WordPress 4.6 for plugins on WP.org. WordPress core auto-loads the right language pack from the plugin slug.
+* **CPF / CNPJ collection at every entry point** — the SignDocs API requires `signer.cpf` or `signer.cnpj` at session-create time. Added to: shortcode form (when `show_form="true"`), AJAX handler validation, frontend JS payload, `wp signdocs send --cpf=` / `--cnpj=` flags, WooCommerce integration (reads `_billing_cpf` / `_billing_cnpj` from order meta — works with the standard "Brazilian Market on WooCommerce" extension), envelope service per-signer.
+* **`wp signdocs send` outputs the full shareable URL** — previously printed only the base session URL, which is not directly usable. Now appends `?cs=<clientSecret>` (URL-encoded) so the printed link can be opened directly to start signing.
+* **`wp signdocs status` now requires `--client-secret`** — documented the embed-token authentication contract. Full implementation deferred to a follow-up release.
+* **Acceptance test against real HML**: WP 6.9.x + MariaDB 11 in podman, plugin installed from the v1.3.1 zip, real HML credentials. Confirmed: `signingSessions->create` returns a valid `sessionId` + `clientSecret` + `url`; `envelopes->create` returns a valid `envelopeId` (PARALLEL, 2 signers); WP-CLI validates CPF/CNPJ inputs correctly; capabilities install on activation; plugin co-active with WooCommerce 10.7.
+
 = 1.3.0 =
 
-Alinhamento com PHP SDK 1.4.0 + readme completo.
+Alignment with PHP SDK 1.4.0 + complete English readme.
 
-* **SDK PHP atualizado para `^1.4`** — a release 1.4.0 do SDK corrigiu uma divergência de modelo em `CreateSigningSessionRequest` / `CreateEnvelopeRequest` que existia desde a 1.0.0: os campos corretos aceitos pela API são `purpose`, `policy`, `signer`, `document`, `returnUrl`, `cancelUrl`, `metadata`, `locale`, `expiresInMinutes`, `appearance`. Call sites do plugin (CLI + AJAX) foram atualizados.
-* **Readme reescrito** — descrição, funcionalidades, instalação, uso, FAQ e screenshots agora refletem integralmente as features de v1.1.0, v1.2.0 e v1.2.x (envelopes multi-signatário, página Verificar, log de auditoria, Private Key JWT, rotação de secret, WP-CLI, capacidades customizadas, LGPD, observabilidade). Versão anterior do readme estava congelada no feature set da v1.0.0.
-* **"Tested up to" atualizado** para WordPress 6.9 (o stack usado no pen test automatizado).
+* **PHP SDK upgraded to `^1.4`** — SDK 1.4.0 fixed a model-shape divergence in `CreateSigningSessionRequest` / `CreateEnvelopeRequest` that had existed since 1.0.0: the correct field names accepted by the API are `purpose`, `policy`, `signer`, `document`, `returnUrl`, `cancelUrl`, `metadata`, `locale`, `expiresInMinutes`, `appearance`. Plugin call sites (CLI + AJAX) were updated.
+* **CPF / CNPJ collection at every entry point** — the API requires `signer.cpf` or `signer.cnpj` at session creation. The shortcode form now exposes CPF + CNPJ fields when `show_form="true"`; the AJAX handler validates them; `wp signdocs send` accepts `--cpf` / `--cnpj`; the WooCommerce integration reads `_billing_cpf` / `_billing_cnpj` from the order (Brazilian Market on WooCommerce extension keys); the envelope service propagates per-signer CPF.
+* **Readme rewritten in English** — per [WP.org policy from 2025-07-28](https://make.wordpress.org/plugins/2025/07/28/requiring-the-readme-to-be-written-in-english/), the canonical readme description must be in English. Portuguese localization is loaded automatically from the bundled `.po` / `.mo` translation files for `pt_BR` sites.
+* **Plugin Check (PCP) errors fixed** — direct file access guards (`defined('ABSPATH')`) added to 4 source files; missing `translators:` comments added to 3 `__()` calls with placeholders; output escaping tightened in WooCommerce email and CPT badge rendering; `strip_tags()` swapped for `wp_strip_all_tags()` in non-test paths.
+* **"Tested up to" updated** to WordPress 6.9 (the version used in the automated pen test).
 
 = 1.2.3 =
 
@@ -397,27 +419,27 @@ Hardening release + alignment with SignDocs PHP SDK 1.3.0.
 * **Test suite** — PHPUnit (Brain Monkey unit tests), PHPStan level 5 (with `phpstan-wordpress`), PHPCS (WordPress-Extra + PHPCompatibilityWP), GitHub Actions matrix on PHP 8.1 / 8.2 / 8.3.
 
 = 1.0.0 =
-* Versão inicial
-* Shortcode `[signdocs]` com 8 atributos configuráveis
-* Bloco Gutenberg com preview ao vivo (ServerSideRender)
-* Custom Post Type `signdocs_signing` com colunas de status, signatário e perfil
-* Webhook receiver REST com verificação HMAC-SHA256
-* Integração WooCommerce: aba de produto, email automático, notas de pedido
-* Criptografia AES-256-CBC para credenciais armazenadas
-* Suporte a popup, redirecionamento e overlay
-* Rate limiting para assinatura anônima
-* Trilíngue: pt-BR, en, es
+* Initial release
+* `[signdocs]` shortcode with 8 configurable attributes
+* Gutenberg block with live preview (ServerSideRender)
+* `signdocs_signing` custom post type with status, signer, and policy columns
+* REST webhook receiver with HMAC-SHA256 verification
+* WooCommerce integration: product tab, automatic email, order notes
+* AES-256-CBC encryption for stored credentials
+* Popup, redirect, and overlay support
+* Rate limiting for anonymous signing
+* Trilingual: pt-BR, en, es
 
 == Upgrade Notice ==
 
 = 1.3.0 =
-Requer SDK PHP 1.4.0 (`^1.4`); corrige modelo de `CreateSigningSessionRequest` que retornaria 400 Bad Request com SDK 1.3.x. Readme reescrito — recomenda-se reler a seção "Para Desenvolvedores" se você tinha integrações custom.
+Requires PHP SDK 1.4.0 (`^1.4`); fixes a `CreateSigningSessionRequest` model that would have returned 400 Bad Request with SDK 1.3.x. Also surfaces CPF / CNPJ collection at every session-create entry point — without this, the API rejects the request. Re-read the "For developers" section if you have custom integrations.
 
 = 1.2.0 =
-Adiciona envelopes multi-signatário, página de verificação, log de auditoria, Private Key JWT auth e rotação de webhook secret. Requer re-ativação do plugin para conceder as novas capacidades (`signdocs_manage/_send/_verify/_view_logs`) aos papéis existentes.
+Adds multi-signer envelopes, the verification page, the audit log, Private Key JWT authentication, and webhook secret rotation. Plugin re-activation is required to grant the new capabilities (`signdocs_manage` / `_send` / `_verify` / `_view_logs`) to existing roles.
 
 = 1.1.0 =
-Atualização de hardening + SDK 1.3.0. Re-ativação necessária para criar a tabela de log de auditoria e instalar as capacidades customizadas.
+Hardening update + SDK 1.3.0 alignment. Re-activation is required to create the audit log table and install the custom capabilities.
 
 = 1.0.0 =
-Versão inicial do plugin SignDocs Brasil para WordPress.
+Initial release of the SignDocs Brasil WordPress plugin.

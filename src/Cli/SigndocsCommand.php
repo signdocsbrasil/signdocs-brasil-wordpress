@@ -52,10 +52,21 @@ final class SigndocsCommand {
 	 * ## OPTIONS
 	 *
 	 * --document=<id>
-	 * : Document ID to have signed
+	 * : WordPress attachment ID of the PDF to sign
 	 *
 	 * --email=<email>
 	 * : Signer email
+	 *
+	 * [--name=<name>]
+	 * : Signer full name (defaults to email if omitted)
+	 *
+	 * [--cpf=<cpf>]
+	 * : Signer CPF (11 digits, dots/dashes optional). At least one of
+	 *   --cpf or --cnpj is required by the API.
+	 *
+	 * [--cnpj=<cnpj>]
+	 * : Signer CNPJ (14 digits, formatting optional). Use instead of
+	 *   --cpf for legal entities.
 	 *
 	 * [--policy=<policy>]
 	 * : CLICK_ONLY, CLICK_PLUS_OTP, BIOMETRIC, BIOMETRIC_PLUS_OTP,
@@ -63,15 +74,28 @@ final class SigndocsCommand {
 	 *
 	 * ## EXAMPLES
 	 *
-	 *     wp signdocs send --document=doc_abc --email=joao@example.com
+	 *     wp signdocs send --document=42 --email=joao@example.com --cpf=12345678901
+	 *     wp signdocs send --document=42 --email=contrato@acme.com --cnpj=12345678000190 --policy=CLICK_PLUS_OTP
 	 */
 	public function send( array $args, array $assoc ): void {
 		$documentId = (int) ( $assoc['document'] ?? 0 );
 		$email      = (string) ( $assoc['email'] ?? '' );
+		$name       = (string) ( $assoc['name'] ?? '' );
+		$cpf        = self::digitsOnly( (string) ( $assoc['cpf'] ?? '' ) );
+		$cnpj       = self::digitsOnly( (string) ( $assoc['cnpj'] ?? '' ) );
 		$policy     = (string) ( $assoc['policy'] ?? 'CLICK_ONLY' );
 
 		if ( $documentId <= 0 || $email === '' ) {
 			\WP_CLI::error( '--document (WordPress attachment ID) and --email are required' );
+		}
+		if ( $cpf === '' && $cnpj === '' ) {
+			\WP_CLI::error( '--cpf or --cnpj is required (the SignDocs API requires at least one)' );
+		}
+		if ( $cpf !== '' && strlen( $cpf ) !== 11 ) {
+			\WP_CLI::error( '--cpf must be 11 digits (got ' . strlen( $cpf ) . ')' );
+		}
+		if ( $cnpj !== '' && strlen( $cnpj ) !== 14 ) {
+			\WP_CLI::error( '--cnpj must be 14 digits (got ' . strlen( $cnpj ) . ')' );
 		}
 
 		$filePath = get_attached_file( $documentId );
@@ -90,8 +114,10 @@ final class SigndocsCommand {
 				purpose: 'DOCUMENT_SIGNATURE',
 				policy: new Policy( profile: $policy ),
 				signer: new Signer(
-					name: $email,
+					name: $name !== '' ? $name : $email,
 					userExternalId: 'wp_cli_' . md5( $email ),
+					cpf: $cpf !== '' ? $cpf : null,
+					cnpj: $cnpj !== '' ? $cnpj : null,
 					email: $email,
 				),
 				document: array(
@@ -100,32 +126,65 @@ final class SigndocsCommand {
 				),
 			);
 			$session = $client->signingSessions->create( $request );
-			\WP_CLI::success( 'session: ' . ( $session->sessionId ?? '?' ) . ' url: ' . ( $session->url ?? '?' ) );
+
+			// Build the shareable signing URL. The base URL alone is NOT
+			// usable — it requires the embed token (clientSecret) appended
+			// as the `cs` query parameter. See sdks/docs/ for the contract.
+			$baseUrl       = (string) ( $session->url ?? '' );
+			$clientSecret  = (string) ( $session->clientSecret ?? '' );
+			$signingUrl    = $baseUrl;
+			if ( $baseUrl !== '' && $clientSecret !== '' ) {
+				$separator   = ( strpos( $baseUrl, '?' ) === false ) ? '?' : '&';
+				$signingUrl .= $separator . 'cs=' . rawurlencode( $clientSecret );
+			}
+
+			\WP_CLI::success( 'session: ' . ( $session->sessionId ?? '?' ) );
+			\WP_CLI::line( 'sign at: ' . $signingUrl );
 		} catch ( \Throwable $e ) {
 			\WP_CLI::error( 'create failed: ' . $e->getMessage() );
 		}
 	}
 
+	private static function digitsOnly( string $raw ): string {
+		return preg_replace( '/\D+/', '', $raw ) ?? '';
+	}
+
 	/**
 	 * Look up the status of a signing session by ID.
+	 *
+	 * Note: GET /v1/signing-sessions/{id}/status authenticates via the
+	 * embed token (clientSecret) returned by the create call, not the
+	 * tenant's OAuth bearer. To use this command you must supply the
+	 * clientSecret your application stored after creating the session.
+	 * If you only have the sessionId, look it up in WP Admin >
+	 * Signatures (the CPT meta `_signdocs_session_url` carries the
+	 * full embed URL with cs=).
 	 *
 	 * ## OPTIONS
 	 *
 	 * <sessionId>
-	 * : Session ID
+	 * : Session ID returned by `wp signdocs send` or the API
+	 *
+	 * --client-secret=<secret>
+	 * : The embed token (clientSecret) returned by the create call.
+	 *   Required because the status endpoint authenticates via embed
+	 *   token, not the tenant OAuth bearer.
 	 */
 	public function status( array $args, array $assoc ): void {
-		$sessionId = (string) ( $args[0] ?? '' );
+		$sessionId    = (string) ( $args[0] ?? '' );
+		$clientSecret = (string) ( $assoc['client-secret'] ?? '' );
 		if ( $sessionId === '' ) {
 			\WP_CLI::error( 'session ID required' );
 		}
-		$client = $this->client();
-		try {
-			$resp = $client->signingSessions->status( $sessionId );
-			\WP_CLI::line( \wp_json_encode( $resp ) );
-		} catch ( \Throwable $e ) {
-			\WP_CLI::error( $e->getMessage() );
+		if ( $clientSecret === '' ) {
+			\WP_CLI::error(
+				'--client-secret is required (the status endpoint authenticates via the session\'s embed token, not the tenant OAuth bearer)'
+			);
 		}
+		\WP_CLI::warning(
+			'Per-session embed-token auth is not yet wrapped by the SDK; raw HTTP call coming in a follow-up release.'
+		);
+		\WP_CLI::error( 'not implemented in v1.3.x' );
 	}
 
 	/**

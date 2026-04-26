@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace SignDocsBrasil\WordPress\Admin;
 
+defined( 'ABSPATH' ) || exit;
+
 use SignDocsBrasil\WordPress\Auth\Capabilities;
 
 // The WP_List_Table class lives in wp-admin/includes/ and is not

@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace SignDocsBrasil\WordPress\Webhook;
 
+defined( 'ABSPATH' ) || exit;
+
 use SignDocsBrasil\Api\WebhookVerifier;
 use SignDocsBrasil\WordPress\Support\Logger;
 

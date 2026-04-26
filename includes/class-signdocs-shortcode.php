@@ -66,6 +66,9 @@ final class Signdocs_Shortcode
                 'closed' => __('Assinatura cancelada.', 'signdocs-brasil'),
                 'nameRequired' => __('Nome é obrigatório.', 'signdocs-brasil'),
                 'emailRequired' => __('Email é obrigatório.', 'signdocs-brasil'),
+                'cpfOrCnpjRequired' => __('CPF ou CNPJ é obrigatório.', 'signdocs-brasil'),
+                'cpfInvalid' => __('CPF deve ter 11 dígitos.', 'signdocs-brasil'),
+                'cnpjInvalid' => __('CNPJ deve ter 14 dígitos.', 'signdocs-brasil'),
             ],
         ];
 
@@ -98,6 +101,18 @@ final class Signdocs_Shortcode
                     <input type="email" class="signdocs-field-email"
                            value="<?php echo esc_attr($config['signerEmail'] ?? ''); ?>"
                            placeholder="<?php esc_attr_e('Email', 'signdocs-brasil'); ?>" required>
+                </p>
+                <p>
+                    <label><?php esc_html_e('CPF', 'signdocs-brasil'); ?></label>
+                    <input type="text" class="signdocs-field-cpf" inputmode="numeric"
+                           placeholder="<?php esc_attr_e('000.000.000-00', 'signdocs-brasil'); ?>"
+                           maxlength="14">
+                </p>
+                <p>
+                    <label><?php esc_html_e('CNPJ (se pessoa jurídica)', 'signdocs-brasil'); ?></label>
+                    <input type="text" class="signdocs-field-cnpj" inputmode="numeric"
+                           placeholder="<?php esc_attr_e('00.000.000/0000-00', 'signdocs-brasil'); ?>"
+                           maxlength="18">
                 </p>
             </div>
             <?php endif; ?>

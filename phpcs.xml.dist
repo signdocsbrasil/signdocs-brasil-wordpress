@@ -110,4 +110,27 @@
     <rule ref="WordPress.Security.NonceVerification.Recommended">
         <exclude-pattern>src/Admin/AuditTable\.php</exclude-pattern>
     </rule>
+
+    <!--
+      WordPress.WP.AlternativeFunctions.file_system_operations_*
+      ──────────────────────────────────────────────────────────
+      WPCS wants WP_Filesystem for file ops. AuditExport streams CSV
+      directly to `php://output` for memory-safe export of large
+      audit logs (potentially multi-GB). WP_Filesystem doesn't expose
+      a streaming write API; using it would force buffering the entire
+      CSV in memory before sending. fopen('php://output', 'wb') +
+      fputcsv + fwrite + fclose is the canonical PHP pattern for
+      streaming downloads and is what every other major plugin
+      (WooCommerce reports, WP-CLI export, etc.) uses for the same
+      reason.
+    -->
+    <rule ref="WordPress.WP.AlternativeFunctions.file_system_operations_fwrite">
+        <exclude-pattern>src/Admin/AuditExport\.php</exclude-pattern>
+    </rule>
+    <rule ref="WordPress.WP.AlternativeFunctions.file_system_operations_fclose">
+        <exclude-pattern>src/Admin/AuditExport\.php</exclude-pattern>
+    </rule>
+    <rule ref="WordPress.WP.AlternativeFunctions.file_system_operations_fopen">
+        <exclude-pattern>src/Admin/AuditExport\.php</exclude-pattern>
+    </rule>
 </ruleset>

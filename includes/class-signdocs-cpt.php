@@ -63,7 +63,10 @@ final class Signdocs_CPT
                     'EXPIRED' => '<span style="color:#996800">&#9202; ' . esc_html__('Expirada', 'signdocs-brasil') . '</span>',
                     'FAILED' => '<span style="color:#d63638">&#9888; ' . esc_html__('Falhou', 'signdocs-brasil') . '</span>',
                 ];
-                echo $badges[$status] ?? esc_html($status ?: '—');
+                // Badges are plugin-controlled HTML (no user input). Each label
+                // is already wrapped in esc_html__() above. wp_kses_post() further
+                // restricts to the safe post-content tag set.
+                echo wp_kses_post($badges[$status] ?? esc_html($status ?: '—'));
                 break;
 
             case 'signdocs_signer':

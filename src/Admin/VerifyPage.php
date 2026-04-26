@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace SignDocsBrasil\WordPress\Admin;
 
+defined( 'ABSPATH' ) || exit;
+
 use SignDocsBrasil\Api\Models\EnvelopeVerificationResponse;
 use SignDocsBrasil\Api\Models\VerificationResponse;
 use SignDocsBrasil\WordPress\Auth\Capabilities;

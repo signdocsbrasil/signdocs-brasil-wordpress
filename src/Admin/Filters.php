@@ -140,7 +140,12 @@ final class Filters {
 		if ( function_exists( '\\wp_unslash' ) && function_exists( '\\sanitize_text_field' ) ) {
 			return (string) \sanitize_text_field( \wp_unslash( $value ) );
 		}
-		// Fallback used only in non-WP unit tests.
+		// Fallback used only in non-WP unit tests. wp_strip_all_tags()
+		// would be preferable but isn't loaded outside WP; in unit tests
+		// the WP runtime isn't booted, so we fall back to PHP's strip_tags().
+		// In production this branch is unreachable because sanitize_text_field
+		// + wp_unslash are always available when WP is loaded.
+		// phpcs:ignore WordPress.WP.AlternativeFunctions.strip_tags_strip_tags -- only reached in unit tests where wp_strip_all_tags isn't loaded
 		$stripped = strip_tags( $value );
 		$stripped = (string) preg_replace( '/[\r\n\t\0]+/', '', $stripped );
 		return trim( $stripped );
