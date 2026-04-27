@@ -86,14 +86,25 @@ final class Capabilities {
 		switch ( $cap ) {
 			case 'edit_signdocs_signing':
 			case 'edit_signdocs_signings':
+			case 'edit_others_signdocs_signings':
 			case 'publish_signdocs_signings':
+			case 'edit_signdocs_envelope':
+			case 'edit_signdocs_envelopes':
+			case 'edit_others_signdocs_envelopes':
+			case 'publish_signdocs_envelopes':
 				return array( self::SEND );
 			case 'read_signdocs_signing':
 			case 'read_private_signdocs_signings':
+			case 'read_signdocs_envelope':
+			case 'read_private_signdocs_envelopes':
 				return array( self::VERIFY );
 			case 'delete_signdocs_signing':
 			case 'delete_signdocs_signings':
 			case 'delete_others_signdocs_signings':
+			case 'delete_signdocs_envelope':
+			case 'delete_signdocs_envelopes':
+			case 'delete_others_signdocs_envelopes':
+			case 'delete_published_signdocs_envelopes':
 				return array( self::MANAGE );
 			default:
 				return $caps;

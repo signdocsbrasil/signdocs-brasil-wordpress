@@ -43,17 +43,15 @@ final class EnvelopeCpt {
 				'show_ui'         => true,
 				'show_in_menu'    => 'edit.php?post_type=signdocs_signing',
 				'supports'        => array( 'title', 'custom-fields' ),
-				'capability_type' => 'signdocs_envelope',
+				// Use custom capability type. The plugin's `Capabilities::mapMetaCap`
+				// filter translates the generated `edit_signdocs_envelope`-style
+				// caps to our signdocs_* primitive caps. We do NOT remap the CPT's
+				// primitive caps directly here, because mapping `read_post` →
+				// `signdocs_verify` registers signdocs_verify as a *meta* cap and
+				// causes core's map_meta_cap to short-circuit it to `do_not_allow`
+				// when called without a post argument.
+				'capability_type' => array( 'signdocs_envelope', 'signdocs_envelopes' ),
 				'map_meta_cap'    => true,
-				'capabilities'    => array(
-					'edit_post'          => Capabilities::SEND,
-					'read_post'          => Capabilities::VERIFY,
-					'delete_post'        => Capabilities::MANAGE,
-					'edit_posts'         => Capabilities::SEND,
-					'edit_others_posts'  => Capabilities::MANAGE,
-					'publish_posts'      => Capabilities::SEND,
-					'read_private_posts' => Capabilities::VERIFY,
-				),
 				'show_in_rest'    => false,
 			)
 		);

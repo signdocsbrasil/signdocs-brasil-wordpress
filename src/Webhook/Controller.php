@@ -17,10 +17,13 @@ use SignDocsBrasil\WordPress\Support\Logger;
  * 1. Timestamp drift gate — reject if |now - ts| > 300s before we even
  *    look at the HMAC. Cheap and saves CPU on replay floods.
  * 2. HMAC verification — via the SDK's WebhookVerifier (timing-safe).
- * 3. Delivery-ID dedup — `X-SignDocs-Webhook-Id` transient lock with
- *    7-day TTL. Races between duplicate concurrent deliveries are
- *    resolved by the underlying transient write (losing side returns
- *    200 deduped — the delivery succeeded from the server's view).
+ * 3. Per-delivery dedup — keyed off the JSON body's top-level `id`
+ *    field (the only per-delivery identifier; `X-SignDocs-Webhook-Id`
+ *    carries the *subscription* ID, not a delivery ID, so it cannot be
+ *    used for dedup). 7-day TTL transient lock. Races between duplicate
+ *    concurrent deliveries are resolved by the underlying transient
+ *    write (losing side returns 200 deduped — the delivery succeeded
+ *    from the server's view).
  * 4. Input-shape guard in the dispatcher (see EventRouter::isSafeId).
  */
 final class Controller {
@@ -73,8 +76,11 @@ final class Controller {
 	public function authorize( \WP_REST_Request $request ): bool|\WP_Error {
 		$signature = (string) $request->get_header( 'X-SignDocs-Signature' );
 		$timestamp = (string) $request->get_header( 'X-SignDocs-Timestamp' );
-		$webhookId = (string) $request->get_header( 'X-SignDocs-Webhook-Id' );
-		$body      = (string) $request->get_body();
+		// Note: X-SignDocs-Webhook-Id carries the subscription ID (wh_*), NOT
+		// a per-delivery ID. We surface it for diagnostics only — dedup keys
+		// off the body's top-level `id` field (del_*) inside handle().
+		$subscriptionId = (string) $request->get_header( 'X-SignDocs-Webhook-Id' );
+		$body           = (string) $request->get_body();
 
 		// Defence-in-depth timestamp drift check (the SDK also enforces this).
 		if ( $timestamp === '' || ! ctype_digit( ltrim( $timestamp, '-' ) ) ) {
@@ -87,7 +93,7 @@ final class Controller {
 				'Rejected webhook with excessive clock drift',
 				array(
 					'drift'     => $drift,
-					'webhookId' => $webhookId,
+					'subscriptionId' => $subscriptionId,
 				)
 			);
 			return new \WP_Error( 'signdocs_timestamp_drift', 'Timestamp outside acceptable window', array( 'status' => 400 ) );
@@ -114,19 +120,11 @@ final class Controller {
 				'webhook.invalid_signature',
 				'Rejected webhook with invalid HMAC',
 				array(
-					'webhookId'       => $webhookId,
+					'subscriptionId'  => $subscriptionId,
 					'candidatesTried' => count( $secrets ),
 				)
 			);
 			return new \WP_Error( 'signdocs_bad_signature', 'Invalid signature', array( 'status' => 401 ) );
-		}
-
-		// Dedup: store the webhook ID so a re-delivery short-circuits.
-		// The caller's `handle()` reads this same key to detect dupes.
-		// If no webhook ID header is present (shouldn't happen with
-		// modern deliveries), we skip dedup rather than reject.
-		if ( $webhookId !== '' ) {
-			$request->set_param( 'signdocs_webhook_id', $webhookId );
 		}
 
 		return true;
@@ -135,9 +133,18 @@ final class Controller {
 	public function handle( \WP_REST_Request $request ): \WP_REST_Response {
 		\nocache_headers();
 
-		$webhookId = (string) $request->get_param( 'signdocs_webhook_id' );
-		if ( $webhookId !== '' ) {
-			$transientKey = self::DEDUP_TRANSIENT_PREFIX . substr( $webhookId, 0, 150 );
+		$payload = json_decode( (string) $request->get_body(), true );
+		if ( ! is_array( $payload ) ) {
+			return new \WP_REST_Response( array( 'error' => 'Invalid JSON' ), 400 );
+		}
+
+		// Per-delivery dedup. The body's top-level `id` is the only stable
+		// per-delivery identifier (header `X-SignDocs-Webhook-Id` carries the
+		// subscription ID instead). If the body lacks an id field — e.g. a
+		// hand-crafted test — skip dedup rather than reject.
+		$deliveryId = isset( $payload['id'] ) && is_string( $payload['id'] ) ? $payload['id'] : '';
+		if ( $deliveryId !== '' && preg_match( '/^[A-Za-z0-9_\-]{1,128}$/', $deliveryId ) === 1 ) {
+			$transientKey = self::DEDUP_TRANSIENT_PREFIX . $deliveryId;
 			if ( \get_transient( $transientKey ) !== false ) {
 				return new \WP_REST_Response(
 					array(
@@ -148,11 +155,6 @@ final class Controller {
 				);
 			}
 			\set_transient( $transientKey, 1, self::DEDUP_TTL_SECONDS );
-		}
-
-		$payload = json_decode( (string) $request->get_body(), true );
-		if ( ! is_array( $payload ) ) {
-			return new \WP_REST_Response( array( 'error' => 'Invalid JSON' ), 400 );
 		}
 
 		$result = $this->router->route( $payload );

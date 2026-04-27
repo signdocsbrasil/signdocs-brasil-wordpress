@@ -5,7 +5,7 @@ Tags: electronic signature, digital signature, woocommerce, contracts, icp-brasi
 Requires at least: 6.0
 Tested up to: 6.9
 Requires PHP: 8.1
-Stable tag: 1.3.1
+Stable tag: 1.3.2
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -345,6 +345,14 @@ Yes. All user-facing strings are translatable (`signdocs-brasil` text domain) an
 
 == Changelog ==
 
+= 1.3.2 =
+
+Two production-acceptance fixes uncovered while running the v1.3.1 release against real HML webhooks and the verify admin UI.
+
+* **Webhook dedup keyed off the wrong identifier** — `X-SignDocs-Webhook-Id` carries the *subscription* ID (`wh_*`), not a per-delivery ID. The previous dedup transient used that header as the key, so the first delivery for a subscription poisoned the cache for the full 7-day TTL and every subsequent webhook (including `TRANSACTION.COMPLETED`) returned 200/deduped without ever reaching the dispatcher. CPT records stayed stuck in `PENDING`. Now keys off the body's top-level `id` (the actual delivery ID, `del_*`).
+* **Custom capabilities resolved to `do_not_allow`** — the envelope CPT's `'capabilities'` map remapped `read_post`/`edit_post` to `signdocs_verify`/`signdocs_send`/`signdocs_manage`, which registered them in WordPress's `$post_type_meta_caps` table as *meta* caps. Core's `map_meta_cap()` then short-circuited them to `do_not_allow` whenever called without a post argument — so even an administrator got HTTP 403 on the Verify admin page. Switched the envelope CPT to a custom `capability_type` and translate the generated CPT-cap names to the four primitive `signdocs_*` caps via `Capabilities::mapMetaCap`.
+* **Verified end-to-end against HML**: full create → sign → `TRANSACTION.COMPLETED` webhook → CPT updated to COMPLETED with `evidenceId` → `verification->verify($evidenceId)` returns the signed evidence record (CPF, policy, completion timestamp).
+
 = 1.3.1 =
 
 WP.org submission readiness — Plugin Check (PCP) baseline + canonical English readme + complete CPF/CNPJ collection.
@@ -431,6 +439,9 @@ Hardening release + alignment with SignDocs PHP SDK 1.3.0.
 * Trilingual: pt-BR, en, es
 
 == Upgrade Notice ==
+
+= 1.3.2 =
+Two production-blocking fixes uncovered during real-HML acceptance testing: (1) webhooks were being silently deduped because the dedup key was the subscription ID rather than the per-delivery ID — `TRANSACTION.COMPLETED` never updated the CPT; (2) the `signdocs_manage`/`_send`/`_verify` capabilities resolved to `do_not_allow` because the envelope CPT was registering them as meta caps, blocking access to the Verify admin page even for administrators. Strongly recommended for any 1.3.x install.
 
 = 1.3.0 =
 Requires PHP SDK 1.4.0 (`^1.4`); fixes a `CreateSigningSessionRequest` model that would have returned 400 Bad Request with SDK 1.3.x. Also surfaces CPF / CNPJ collection at every session-create entry point — without this, the API rejects the request. Re-read the "For developers" section if you have custom integrations.
