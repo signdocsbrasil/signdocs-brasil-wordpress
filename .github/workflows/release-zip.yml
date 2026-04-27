@@ -36,9 +36,13 @@ jobs:
             echo "version=${GITHUB_REF#refs/tags/v}" >> "$GITHUB_OUTPUT"
           fi
 
+      # Always check out the default branch — the build script is
+      # generic, so we want fixes to it to apply to every backfilled
+      # zip without needing to re-tag old releases. The script then
+      # uses `git archive <tag>` to materialize the tagged source.
       - uses: actions/checkout@v4
         with:
-          ref: ${{ steps.tag.outputs.ref }}
+          fetch-depth: 0  # need tag history for `git archive`
 
       - name: Set up PHP
         uses: shivammathur/setup-php@v2
@@ -48,7 +52,7 @@ jobs:
           coverage: none
 
       - name: Build distribution zip
-        run: bin/build-zip.sh --version "${{ steps.tag.outputs.version }}"
+        run: bin/build-zip.sh --ref "${{ steps.tag.outputs.ref }}"
 
       - name: Verify zip declares the right version
         # Cheap sanity check: refuse to publish a zip whose internal
