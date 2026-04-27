@@ -70,10 +70,11 @@ final class Signdocs_Webhook
             return new \WP_REST_Response(['received' => true, 'matched' => false], 200);
         }
 
-        // Update based on event type
+        // Update based on event type. Server only emits TRANSACTION.* —
+        // the SIGNING_SESSION.* variants exist in the OpenAPI spec but
+        // never reach a subscriber.
         switch ($event_type) {
             case 'TRANSACTION.COMPLETED':
-            case 'SIGNING_SESSION.COMPLETED':
                 $evidence_id = $payload['data']['evidenceId'] ?? '';
                 $completed_at = $payload['data']['completedAt'] ?? $payload['timestamp'] ?? '';
 
@@ -92,21 +93,18 @@ final class Signdocs_Webhook
                 break;
 
             case 'TRANSACTION.CANCELLED':
-            case 'SIGNING_SESSION.CANCELLED':
                 update_post_meta($post_id, '_signdocs_status', 'CANCELLED');
                 update_post_meta($post_id, '_signdocs_webhook_payload', wp_json_encode($payload));
                 do_action('signdocs_signing_cancelled', $post_id, $payload);
                 break;
 
             case 'TRANSACTION.EXPIRED':
-            case 'SIGNING_SESSION.EXPIRED':
                 update_post_meta($post_id, '_signdocs_status', 'EXPIRED');
                 update_post_meta($post_id, '_signdocs_webhook_payload', wp_json_encode($payload));
                 do_action('signdocs_signing_expired', $post_id, $payload);
                 break;
 
             case 'TRANSACTION.FAILED':
-            case 'SIGNING_SESSION.FAILED':
                 update_post_meta($post_id, '_signdocs_status', 'FAILED');
                 update_post_meta($post_id, '_signdocs_webhook_payload', wp_json_encode($payload));
                 do_action('signdocs_signing_failed', $post_id, $payload);

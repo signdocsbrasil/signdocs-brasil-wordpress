@@ -7,9 +7,15 @@ namespace SignDocsBrasil\WordPress\Webhook;
 use SignDocsBrasil\WordPress\Support\Logger;
 
 /**
- * Dispatches verified webhook payloads to per-event handlers. Handles
- * all 17 canonical event types, including the two NT65 consignado
- * events added in OpenAPI 1.1.0 / SDK 1.3.0.
+ * Dispatches verified webhook payloads to per-event handlers.
+ *
+ * The OpenAPI spec at the time of writing (v1.1.0) declares 17 webhook
+ * event types, but the deployed server only emits 13 of them — the 11
+ * accepted at subscription registration plus the two NT65 events added
+ * for the consignado INSS workflow. The four `SIGNING_SESSION.*`
+ * variants are part of the spec but the server never emits them; the
+ * lifecycle is communicated via the corresponding `TRANSACTION.*`
+ * events instead. Spec cleanup is tracked separately.
  *
  * Handlers update the per-session CPT record (meta + status) and fire
  * WordPress actions for external code to subscribe to. The router
@@ -35,7 +41,6 @@ final class EventRouter {
 		// Events that target a specific session CPT record.
 		switch ( $eventType ) {
 			case 'TRANSACTION.CREATED':
-			case 'SIGNING_SESSION.CREATED':
 				$postId = $this->ensureCpt( $sessionId, $transactionId, $postId, $payload );
 				$this->setStatus( $postId, 'PENDING', $payload );
 				\do_action( 'signdocs_session_created', $postId, $payload );
@@ -46,7 +51,6 @@ final class EventRouter {
 				);
 
 			case 'TRANSACTION.COMPLETED':
-			case 'SIGNING_SESSION.COMPLETED':
 				if ( $postId === 0 ) {
 					break;
 				}
@@ -57,6 +61,15 @@ final class EventRouter {
 				\update_post_meta( $postId, '_signdocs_completed_at', $completedAt );
 				\update_post_meta( $postId, '_signdocs_webhook_payload', \wp_json_encode( $payload ) );
 				\do_action( 'signdocs_signing_completed', $postId, $payload );
+				Logger::info(
+					'webhook.completed',
+					'Transaction completed',
+					array(
+						'transactionId' => $transactionId,
+						'evidenceId'    => $evidenceId,
+						'postId'        => $postId,
+					)
+				);
 				return array(
 					'matched' => true,
 					'event'   => $eventType,
@@ -64,7 +77,6 @@ final class EventRouter {
 				);
 
 			case 'TRANSACTION.CANCELLED':
-			case 'SIGNING_SESSION.CANCELLED':
 				if ( $postId === 0 ) {
 					break;
 				}
@@ -77,7 +89,6 @@ final class EventRouter {
 				);
 
 			case 'TRANSACTION.EXPIRED':
-			case 'SIGNING_SESSION.EXPIRED':
 				if ( $postId === 0 ) {
 					break;
 				}
@@ -90,7 +101,6 @@ final class EventRouter {
 				);
 
 			case 'TRANSACTION.FAILED':
-			case 'SIGNING_SESSION.FAILED':
 				if ( $postId === 0 ) {
 					break;
 				}

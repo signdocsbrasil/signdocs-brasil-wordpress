@@ -5,7 +5,7 @@ Tags: electronic signature, digital signature, woocommerce, contracts, icp-brasi
 Requires at least: 6.0
 Tested up to: 6.9
 Requires PHP: 8.1
-Stable tag: 1.3.2
+Stable tag: 1.3.3
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -345,6 +345,15 @@ Yes. All user-facing strings are translatable (`signdocs-brasil` text domain) an
 
 == Changelog ==
 
+= 1.3.3 =
+
+Cleanup pass after the v1.3.2 acceptance run.
+
+* **`wp signdocs webhook-test` actually works.** The SDK's typed `WebhookTestResponse` model expects `{deliveryId, status, statusCode}` but the API returns `{webhookId, testDelivery: {httpStatus, success, timestamp}}`, so the typed call returned all-empty fields. CLI now bypasses the typed wrapper and reads the raw response, printing the real HTTP status + delivery timestamp. SDK fix tracked separately; the CLI unblocks operators today.
+* **Dispatcher: dropped dead `SIGNING_SESSION.*` branches.** The OpenAPI spec lists these but the server never emits them — the lifecycle is communicated entirely through the corresponding `TRANSACTION.*` events. Same cleanup applied to the legacy webhook controller in `includes/`. No behavior change; just removes confusion for anyone reading the dispatch table.
+* **Audit log writes on success, not just on warnings.** A `webhook.completed` info row now lands in `signdocs_log` for every `TRANSACTION.COMPLETED`, capturing transaction ID, evidence ID, and the matched CPT post ID. Brings the table in line with the readme's "every API call recorded" claim.
+* **WP-CLI `webhook-test` and `log-tail` now register with their dashed names** as documented in the class header (previously the `_` form silently took precedence).
+
 = 1.3.2 =
 
 Two production-acceptance fixes uncovered while running the v1.3.1 release against real HML webhooks and the verify admin UI.
@@ -418,7 +427,7 @@ Hardening release + alignment with SignDocs PHP SDK 1.3.0.
 
 * **Shared OAuth token cache** — SDK `TokenCacheInterface` is implemented by `WpTransientTokenCache`, so a single token is reused across every PHP-FPM worker instead of one token fetch per request.
 * **Webhook hardening** — timestamp drift gate (≤300s), replay de-duplication via `X-SignDocs-Webhook-Id` transient lock (7-day TTL), proper `permission_callback` that runs HMAC before any business logic, input-shape guard on session / transaction IDs.
-* **Full 17-event webhook coverage** — added `TRANSACTION.CREATED`, `TRANSACTION.FALLBACK`, `STEP.STARTED/COMPLETED/FAILED`, `QUOTA.WARNING`, `API.DEPRECATION_NOTICE`, `SIGNING_SESSION.CREATED`, plus the two NT65 INSS-consignado events `STEP.PURPOSE_DISCLOSURE_SENT` and `TRANSACTION.DEADLINE_APPROACHING`.
+* **Full webhook coverage** — added `TRANSACTION.CREATED`, `TRANSACTION.FALLBACK`, `STEP.STARTED/COMPLETED/FAILED`, `QUOTA.WARNING`, `API.DEPRECATION_NOTICE`, plus the two NT65 INSS-consignado events `STEP.PURPOSE_DISCLOSURE_SENT` and `TRANSACTION.DEADLINE_APPROACHING`. Covers the 13 events the server actually emits today.
 * **Observability** — `Deprecation` / `Sunset` (RFC 8594) response headers surface as admin notices; `RateLimit-*` headers are captured in a transient for the dashboard widget; structured log table `{prefix}signdocs_log` with 30-day retention and a daily cron prune.
 * **Idempotency** — `X-Idempotency-Key` is now sent on every resource-creating call, derived deterministically from site URL + user + action + resource, so AJAX retries no longer create duplicate sessions.
 * **Capability model** — four new caps (`signdocs_manage`, `signdocs_send`, `signdocs_verify`, `signdocs_view_logs`) instead of raw `manage_options` / `edit_posts`. Granted to administrator / editor / author on activation via `Capabilities::install()`; `map_meta_cap` wires them to CPT operations.

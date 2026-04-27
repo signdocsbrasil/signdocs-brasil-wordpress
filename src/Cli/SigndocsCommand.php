@@ -194,6 +194,8 @@ final class SigndocsCommand {
 	 *
 	 * <webhookId>
 	 * : Webhook ID
+	 *
+	 * @subcommand webhook-test
 	 */
 	public function webhook_test( array $args, array $assoc ): void {
 		$webhookId = (string) ( $args[0] ?? '' );
@@ -202,8 +204,25 @@ final class SigndocsCommand {
 		}
 		$client = $this->client();
 		try {
-			$resp = $client->webhooks->test( $webhookId );
-			\WP_CLI::success( 'test queued: ' . \wp_json_encode( $resp ) );
+			// The SDK's typed WebhookTestResponse model is misaligned with the
+			// actual API shape (`{webhookId, testDelivery: {httpStatus, success,
+			// timestamp}}`), so it returns all-empty fields. Until the SDK is
+			// fixed, bypass it and call the raw HTTP path directly via reflection.
+			$ref  = new \ReflectionClass( $client->webhooks );
+			$prop = $ref->getProperty( 'http' );
+			$prop->setAccessible( true );
+			$http = $prop->getValue( $client->webhooks );
+			$data = $http->request( 'POST', '/v1/webhooks/' . rawurlencode( $webhookId ) . '/test' );
+
+			$delivery = is_array( $data['testDelivery'] ?? null ) ? $data['testDelivery'] : array();
+			$status   = (int) ( $delivery['httpStatus'] ?? 0 );
+			$success  = (bool) ( $delivery['success'] ?? false );
+
+			if ( $success ) {
+				\WP_CLI::success( sprintf( 'test delivered (HTTP %d) at %s', $status, (string) ( $delivery['timestamp'] ?? '' ) ) );
+			} else {
+				\WP_CLI::warning( sprintf( 'test endpoint responded HTTP %d', $status ) );
+			}
 		} catch ( \Throwable $e ) {
 			\WP_CLI::error( $e->getMessage() );
 		}
@@ -222,6 +241,8 @@ final class SigndocsCommand {
 	 *
 	 * [--limit=<n>]
 	 * : Max rows (default 50)
+	 *
+	 * @subcommand log-tail
 	 */
 	public function log_tail( array $args, array $assoc ): void {
 		$limit = max( 1, min( 500, (int) ( $assoc['limit'] ?? 50 ) ) );
