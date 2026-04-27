@@ -1,0 +1,81 @@
+name: Build release zip
+
+# Builds the WordPress.org-shaped distribution zip on every `v*` tag and
+# attaches it to the matching GitHub Release. The Release itself is
+# either created by this workflow (when no Release yet exists for the
+# tag) or updated in place to add the asset.
+#
+# This is the GitHub-distribution channel. The WP.org SVN sync lives in
+# `wp-org-deploy.yml` and is gated separately by `DEPLOY_TO_WPORG`.
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to (re)build a zip for, e.g. v1.3.3'
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve tag
+        id: tag
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "ref=${{ github.event.inputs.tag }}" >> "$GITHUB_OUTPUT"
+            echo "version=${{ github.event.inputs.tag }}" | sed 's/version=v/version=/' >> "$GITHUB_OUTPUT"
+          else
+            echo "ref=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
+            echo "version=${GITHUB_REF#refs/tags/v}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.tag.outputs.ref }}
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.1'
+          tools: composer:v2
+          coverage: none
+
+      - name: Build distribution zip
+        run: bin/build-zip.sh --version "${{ steps.tag.outputs.version }}"
+
+      - name: Verify zip declares the right version
+        # Cheap sanity check: refuse to publish a zip whose internal
+        # readme.txt / plugin header don't match the tag we just built
+        # for. Catches mismatched bumps before the Release goes live.
+        run: |
+          set -e
+          ZIP="signdocs-brasil-${{ steps.tag.outputs.version }}.zip"
+          unzip -p "$ZIP" signdocs-brasil/readme.txt | grep -qE "^Stable tag: ${{ steps.tag.outputs.version }}$"
+          unzip -p "$ZIP" signdocs-brasil/signdocs-brasil.php | grep -qE "Version:\s*${{ steps.tag.outputs.version }}$"
+
+      - name: Attach zip to GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -e
+          TAG="${{ steps.tag.outputs.ref }}"
+          ZIP="signdocs-brasil-${{ steps.tag.outputs.version }}.zip"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            # Release already exists (e.g. operator created it manually
+            # with custom notes) — just upload/replace the zip asset.
+            gh release upload "$TAG" "$ZIP" --clobber
+          else
+            # Auto-publish a Release using the annotated-tag message as
+            # the body so notes track the tag. Operator can edit later.
+            BODY=$(git tag -l --format='%(contents)' "$TAG")
+            gh release create "$TAG" "$ZIP" \
+              --title "$TAG" \
+              --notes "$BODY"
+          fi

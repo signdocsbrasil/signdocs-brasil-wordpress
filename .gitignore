@@ -36,3 +36,6 @@ Thumbs.db
 
 # Internal working notes — not part of public source
 CLAUDE.md
+
+# Release artifacts produced by bin/build-zip.sh
+/signdocs-brasil-*.zip
