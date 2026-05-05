@@ -5,7 +5,7 @@ Tags: electronic signature, digital signature, woocommerce, contracts, icp-brasi
 Requires at least: 6.0
 Tested up to: 6.9
 Requires PHP: 8.1
-Stable tag: 1.3.3
+Stable tag: 1.3.4
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -345,6 +345,18 @@ Yes. All user-facing strings are translatable (`signdocs-brasil` text domain) an
 
 == Changelog ==
 
+= 1.3.4 =
+
+Plugin Check (PCP) hardening pass for WP.org submission. No runtime behavior changes — every fix in this release is either annotation, defensive cleanup, or removal of a benign-but-noisy header.
+
+* **Dropped `Domain Path: /languages` header** — the plugin doesn't ship `.pot` / `.mo` files yet (translations are loaded via WP.org's automatic language packs once approved), and the empty `languages/` folder doesn't exist in the distribution zip. PCP rightly flagged the header as pointing to a non-existent path.
+* **`wp_unslash()` + explicit sanitization on every `$_POST` / `$_SERVER` read** — added across `class-signdocs-ajax.php` and `class-signdocs-woocommerce.php`. The values were already being passed through `sanitize_text_field()` / `absint()` / `sanitize_email()` / `esc_url_raw()`, but `wp_unslash()` is the WPCS-canonical pattern and reviewers expect it.
+* **Documented `phpcs:ignore` annotations on the custom-table queries.** `AuditQuery`, `Logger`, `webhook` controller, and `uninstall.php` all touch `{$wpdb->prefix}signdocs_log` (or `$wpdb->postmeta` for the webhook lookup). PCP's `WordPress.DB.DirectDatabaseQuery.*` is unavoidable for plugins with their own tables — every annotation now states the table being touched and why core's caching/query API doesn't apply.
+* **`AuditQuery` dynamic-prepare pattern documented inline.** `WordPress.DB.PreparedSQL.InterpolatedNotPrepared` and `PreparedSQLPlaceholders.*` warnings on `AuditQuery::count()` / `select()` are PCP false positives — the `{$where}` fragment is built only from `Filters` allow-listed columns and the `{$orderBy}` / `{$order}` are validated against `ALLOWED_ORDER_COLUMNS` and `validatedOrder()`. Annotated explicitly so future readers (and reviewers) don't have to re-discover this.
+* **`wp_enqueue_script` for the CDN-hosted browser SDK now passes a version arg** instead of `null` (`includes/class-signdocs-shortcode.php:140`). The CDN already serves immutable `v1`-pinned bundles, but a version argument silences PCP's `EnqueuedResourceParameters.MissingVersion` and keeps the dev-tools network panel readable.
+
+Plugin Check status after this release: **0 ERRORs, ~30 WARNINGs** (down from 79; remaining warnings are documented false positives — webhook HMAC-vs-nonce, server-side hooks, plugin-specific custom-table queries, and the local-vs-global naming heuristic).
+
 = 1.3.3 =
 
 Cleanup pass after the v1.3.2 acceptance run.
@@ -449,11 +461,17 @@ Hardening release + alignment with SignDocs PHP SDK 1.3.0.
 
 == Upgrade Notice ==
 
+= 1.3.4 =
+Plugin Check (PCP) hardening pass for WP.org submission. No behavior changes — defensive `wp_unslash()` on `$_POST` reads, documented `phpcs:ignore` annotations on the audit-log custom-table queries, dropped the unused `Domain Path` header.
+
+= 1.3.3 =
+Cleanup pass: `wp signdocs webhook-test` now prints actual delivery status; logger writes a row on every successful `TRANSACTION.COMPLETED`; legacy `SIGNING_SESSION.*` dispatch branches removed (server only emits `TRANSACTION.*` events).
+
 = 1.3.2 =
-Two production-blocking fixes uncovered during real-HML acceptance testing: (1) webhooks were being silently deduped because the dedup key was the subscription ID rather than the per-delivery ID — `TRANSACTION.COMPLETED` never updated the CPT; (2) the `signdocs_manage`/`_send`/`_verify` capabilities resolved to `do_not_allow` because the envelope CPT was registering them as meta caps, blocking access to the Verify admin page even for administrators. Strongly recommended for any 1.3.x install.
+Two production-blocking fixes: webhook dedup was keyed off the subscription ID (so `TRANSACTION.COMPLETED` never updated CPTs) and custom capabilities resolved to `do_not_allow` (locking admins out of the Verify page). Strongly recommended for any 1.3.x install.
 
 = 1.3.0 =
-Requires PHP SDK 1.4.0 (`^1.4`); fixes a `CreateSigningSessionRequest` model that would have returned 400 Bad Request with SDK 1.3.x. Also surfaces CPF / CNPJ collection at every session-create entry point — without this, the API rejects the request. Re-read the "For developers" section if you have custom integrations.
+Requires PHP SDK 1.4 (`composer update`); fixes the `CreateSigningSessionRequest` shape that returned 400 with SDK 1.3.x. Also adds CPF / CNPJ collection at every entry point — required by the API. Re-check custom integrations.
 
 = 1.2.0 =
 Adds multi-signer envelopes, the verification page, the audit log, Private Key JWT authentication, and webhook secret rotation. Plugin re-activation is required to grant the new capabilities (`signdocs_manage` / `_send` / `_verify` / `_view_logs`) to existing roles.

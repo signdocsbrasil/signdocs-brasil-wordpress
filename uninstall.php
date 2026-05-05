@@ -2,7 +2,13 @@
 /**
  * Runs when the plugin is deleted via the WordPress admin.
  * Removes all plugin data from the database.
+ *
+ * uninstall.php runs at the script top level, so every loop variable
+ * looks like a global to PCP's prefix heuristic — they're all locals
+ * with file-scoped lifetime. Disabled file-wide to avoid noise.
  */
+
+// phpcs:disable WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedVariableFound
 
 defined('WP_UNINSTALL_PLUGIN') || exit;
 
@@ -44,8 +50,13 @@ foreach ($posts as $post_id) {
     wp_delete_post($post_id, true);
 }
 
-// Clean up rate limiting / webhook dedup / token cache transients
+// Clean up rate limiting / webhook dedup / token cache transients.
+// Bulk LIKE delete is the right tool: there's no core API to delete
+// transients by prefix, and `delete_transient` per key requires knowing
+// every key (we don't — they're hashed). Direct query / no caching are
+// inherent to a one-shot uninstall on the options table.
 global $wpdb;
+// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching
 $wpdb->query(
     "DELETE FROM {$wpdb->options}
      WHERE option_name LIKE '_transient_signdocs_rate_%'
@@ -60,7 +71,9 @@ $wpdb->query(
         OR option_name LIKE '_transient_timeout_signdocs_quota_notice'"
 );
 
-// Drop the v1.1.0 audit log table.
+// Drop the v1.1.0 audit log table — no core API for dropping plugin tables;
+// SchemaChange flag is unavoidable for any plugin that owns its own tables.
+// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching,WordPress.DB.DirectDatabaseQuery.SchemaChange
 $wpdb->query("DROP TABLE IF EXISTS {$wpdb->prefix}signdocs_log");
 
 // Remove custom capabilities from all roles.

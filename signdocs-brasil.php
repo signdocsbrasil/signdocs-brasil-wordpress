@@ -3,13 +3,12 @@
  * Plugin Name: SignDocs Brasil
  * Plugin URI:  https://signdocs.com.br
  * Description: Assinatura digital e eletrônica integrada ao seu site WordPress via SignDocs Brasil.
- * Version:     1.3.3
+ * Version:     1.3.4
  * Author:      SignDocs Brasil
  * Author URI:  https://signdocs.com.br
  * License:     GPL-2.0-or-later
  * License URI: https://www.gnu.org/licenses/gpl-2.0.html
  * Text Domain: signdocs-brasil
- * Domain Path: /languages
  * Requires PHP: 8.1
  * Requires at least: 6.0
  * WC requires at least: 8.0
@@ -18,11 +17,12 @@
 
 defined('ABSPATH') || exit;
 
-define('SIGNDOCS_VERSION', '1.3.3');
+define('SIGNDOCS_VERSION', '1.3.4');
 define('SIGNDOCS_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('SIGNDOCS_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('SIGNDOCS_PLUGIN_BASENAME', plugin_basename(__FILE__));
 
+// phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedVariableFound -- script-scoped local, not a true global.
 $autoloader = SIGNDOCS_PLUGIN_DIR . 'vendor/autoload.php';
 if (file_exists($autoloader)) {
     require_once $autoloader;

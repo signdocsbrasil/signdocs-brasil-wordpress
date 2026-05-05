@@ -61,7 +61,12 @@ final class Logger {
 	public static function dropSchema(): void {
 		global $wpdb;
 		$table = self::tableName();
+		// {$table} is `{$wpdb->prefix}signdocs_log` — our own constant, no
+		// untrusted input. Direct query / schema change / no caching are
+		// inherent to a one-shot uninstall path on a custom plugin table.
+		// phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching,WordPress.DB.DirectDatabaseQuery.SchemaChange,WordPress.DB.PreparedSQL.InterpolatedNotPrepared,PluginCheck.Security.DirectDB.UnescapedDBParameter
 		$wpdb->query( "DROP TABLE IF EXISTS {$table}" );
+		// phpcs:enable WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching,WordPress.DB.DirectDatabaseQuery.SchemaChange,WordPress.DB.PreparedSQL.InterpolatedNotPrepared,PluginCheck.Security.DirectDB.UnescapedDBParameter
 
 		$timestamp = \wp_next_scheduled( self::CRON_HOOK );
 		if ( $timestamp !== false ) {
@@ -75,12 +80,17 @@ final class Logger {
 	public static function prune(): void {
 		global $wpdb;
 		$table = self::tableName();
+		// {$table} interpolation is safe ({$wpdb->prefix}signdocs_log,
+		// no user input). Direct query / no caching are inherent to a
+		// scheduled purge of a custom plugin table.
+		// phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching,WordPress.DB.PreparedSQL.InterpolatedNotPrepared,PluginCheck.Security.DirectDB.UnescapedDBParameter
 		$wpdb->query(
 			$wpdb->prepare(
 				"DELETE FROM {$table} WHERE created_at < DATE_SUB(NOW(), INTERVAL %d DAY)",
 				self::RETENTION_DAYS,
 			)
 		);
+		// phpcs:enable WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching,WordPress.DB.PreparedSQL.InterpolatedNotPrepared,PluginCheck.Security.DirectDB.UnescapedDBParameter
 	}
 
 	/**
@@ -117,6 +127,11 @@ final class Logger {
 	public static function log( string $level, string $eventType, string $message, array $context = array() ): void {
 		if ( function_exists( 'error_log' ) ) {
 			$serialized = $context === array() ? '' : ' ' . wp_json_encode( $context );
+			// Intentional: this logger writes to PHP's error_log on every
+			// call (not gated by WP_DEBUG) so that webhook / API failures
+			// stay visible in production server logs even when the custom
+			// signdocs_log table is unreachable.
+			// phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
 			error_log( sprintf( '[signdocs/%s] %s %s%s', $level, $eventType, $message, $serialized ) );
 		}
 
@@ -125,6 +140,11 @@ final class Logger {
 		}
 		global $wpdb;
 
+		// Custom table {$wpdb->prefix}signdocs_log — no core API exists
+		// for inserting into plugin-owned tables; $wpdb->insert is the
+		// canonical pattern. Caching is meaningless for an append-only
+		// log table that's read by the audit UI, not the request path.
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching
 		$wpdb->insert(
 			self::tableName(),
 			array(

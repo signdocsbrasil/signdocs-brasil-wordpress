@@ -12,6 +12,7 @@ use SignDocsBrasil\WordPress\Auth\Capabilities;
 // autoloaded. The admin page that instantiates this must require the
 // core class first — guarded here for safety.
 if ( ! class_exists( \WP_List_Table::class ) ) {
+	// phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedVariableFound -- local var inside if-block, not a global.
 	$core = \defined( 'ABSPATH' ) ? \ABSPATH . 'wp-admin/includes/class-wp-list-table.php' : '';
 	if ( $core !== '' && file_exists( $core ) ) {
 		require_once $core;
@@ -60,10 +61,11 @@ final class AuditTable extends \WP_List_Table {
 	}
 
 	public function prepare_items(): void {
-		// Reading $_REQUEST here without a nonce is explicitly allowed
-		// by the file-scoped phpcs.xml.dist exclusion: this is WP's own
-		// list-table pagination pattern and carries no state change.
-		// Every value is then strictly allow-list-validated by Filters.
+		// Reading $_REQUEST here without a nonce is the standard WP
+		// list-table pagination pattern (mirrors core's WP_Posts_List_Table).
+		// No state change; every value is then strictly allow-list-validated
+		// by Filters::fromRequest().
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended
 		$request = \wp_unslash( $_REQUEST );
 
 		$filters = Filters::fromRequest( is_array( $request ) ? $request : array() );

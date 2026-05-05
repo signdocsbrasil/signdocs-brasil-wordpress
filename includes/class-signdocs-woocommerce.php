@@ -77,10 +77,16 @@ final class Signdocs_WooCommerce
 
     public function save_product_meta(int $post_id): void
     {
+        // Nonce verification is performed by WooCommerce core's
+        // `WC_Admin_Meta_Boxes::save()` before `woocommerce_process_product_meta`
+        // fires. Re-verifying here would be defensive duplication, but PCP
+        // can't see across the WC dispatch boundary.
+        // phpcs:disable WordPress.Security.NonceVerification.Missing
         $enabled = isset($_POST['_signdocs_wc_enabled']) ? 'yes' : 'no';
         update_post_meta($post_id, '_signdocs_wc_enabled', $enabled);
         update_post_meta($post_id, '_signdocs_wc_document_id', absint($_POST['_signdocs_wc_document_id'] ?? 0));
-        update_post_meta($post_id, '_signdocs_wc_policy', sanitize_text_field($_POST['_signdocs_wc_policy'] ?? ''));
+        update_post_meta($post_id, '_signdocs_wc_policy', sanitize_text_field(wp_unslash($_POST['_signdocs_wc_policy'] ?? '')));
+        // phpcs:enable WordPress.Security.NonceVerification.Missing
     }
 
     // --- Order Completion ---

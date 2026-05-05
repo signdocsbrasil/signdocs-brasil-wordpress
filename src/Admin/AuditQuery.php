@@ -51,6 +51,13 @@ final class AuditQuery {
 		$table            = self::tableName();
 		[$where, $params] = self::buildWhere( $filters );
 
+		// {$table} is a constant ({$wpdb->prefix}signdocs_log). {$where} is
+		// built from `Filters` whose accessors return either '1=1' or
+		// "<allow-listed-column> <op> %s/%d" fragments — never user input.
+		// PCP can't see through this dynamic-prepare pattern; placeholders
+		// inside {$where} are matched at runtime by ...$params. Direct
+		// query / no caching are inherent to a custom plugin table.
+		// phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching,WordPress.DB.PreparedSQL.InterpolatedNotPrepared,WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare,WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber,PluginCheck.Security.DirectDB.UnescapedDBParameter
 		if ( $params === array() ) {
 			return (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$table} WHERE {$where}" );
 		}
@@ -58,6 +65,7 @@ final class AuditQuery {
 		return (int) $wpdb->get_var(
 			$wpdb->prepare( "SELECT COUNT(*) FROM {$table} WHERE {$where}", ...$params )
 		);
+		// phpcs:enable WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching,WordPress.DB.PreparedSQL.InterpolatedNotPrepared,WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare,WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber,PluginCheck.Security.DirectDB.UnescapedDBParameter
 	}
 
 	/**
@@ -79,6 +87,13 @@ final class AuditQuery {
 		$params[] = $offset;
 		$params[] = $limit;
 
+		// {$table} is a constant ({$wpdb->prefix}signdocs_log). {$where}
+		// is built from `Filters` allow-listed columns ('level = %s' etc.),
+		// {$orderBy} is whitelisted via Filters::validatedOrderBy() against
+		// ALLOWED_ORDER_COLUMNS, {$order} via Filters::validatedOrder()
+		// (returns 'ASC' or 'DESC' only). PCP can't see through the dynamic
+		// prepare; %s placeholders in {$where} are matched at runtime.
+		// phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching,WordPress.DB.PreparedSQL.InterpolatedNotPrepared,WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber,PluginCheck.Security.DirectDB.UnescapedDBParameter
 		$rows = $wpdb->get_results(
 			$wpdb->prepare(
 				"SELECT id, created_at, level, event_type, message, context
@@ -90,6 +105,7 @@ final class AuditQuery {
 			),
 			ARRAY_A,
 		);
+		// phpcs:enable WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching,WordPress.DB.PreparedSQL.InterpolatedNotPrepared,WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber,PluginCheck.Security.DirectDB.UnescapedDBParameter
 
 		return is_array( $rows ) ? $rows : array();
 	}

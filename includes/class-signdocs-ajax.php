@@ -40,7 +40,7 @@ final class Signdocs_Ajax
         check_ajax_referer('signdocs_create_session', 'nonce');
 
         // Rate limiting: 5 requests per IP per hour
-        $ip = sanitize_text_field($_SERVER['REMOTE_ADDR'] ?? '');
+        $ip = sanitize_text_field(wp_unslash($_SERVER['REMOTE_ADDR'] ?? ''));
         $transient_key = 'signdocs_rate_' . md5($ip);
         $count = (int) get_transient($transient_key);
         if ($count >= 5) {
@@ -53,6 +53,11 @@ final class Signdocs_Ajax
 
     private function create_session(string $source): void
     {
+        // Nonce already verified by both public callers
+        // (handle_create_session / handle_create_session_nopriv) via
+        // check_ajax_referer() before they delegate here. PCP cannot
+        // trace through the indirection, hence the disable below.
+        // phpcs:disable WordPress.Security.NonceVerification.Missing
         $client = Signdocs_Client_Factory::get_client();
         if ($client === null) {
             wp_send_json_error(['message' => __('Plugin não configurado. Verifique as credenciais da API.', 'signdocs-brasil')]);
@@ -60,10 +65,15 @@ final class Signdocs_Ajax
 
         // Validate required fields
         $document_id = absint($_POST['document_id'] ?? 0);
-        $signer_name = sanitize_text_field($_POST['signer_name'] ?? '');
-        $signer_email = sanitize_email($_POST['signer_email'] ?? '');
-        $signer_cpf = self::digits_only($_POST['signer_cpf'] ?? '');
-        $signer_cnpj = self::digits_only($_POST['signer_cnpj'] ?? '');
+        $signer_name = sanitize_text_field(wp_unslash($_POST['signer_name'] ?? ''));
+        $signer_email = sanitize_email(wp_unslash($_POST['signer_email'] ?? ''));
+        // digits_only() runs the input through sanitize_text_field() then
+        // strips every non-digit, but PCP only recognizes core's named
+        // sanitize_*() helpers and treats this as raw $_POST.
+        // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
+        $signer_cpf = self::digits_only(wp_unslash($_POST['signer_cpf'] ?? ''));
+        // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
+        $signer_cnpj = self::digits_only(wp_unslash($_POST['signer_cnpj'] ?? ''));
 
         if ($document_id === 0) {
             wp_send_json_error(['message' => __('Documento não especificado.', 'signdocs-brasil')]);
@@ -97,10 +107,10 @@ final class Signdocs_Ajax
             wp_send_json_error(['message' => __('Erro ao ler o documento.', 'signdocs-brasil')]);
         }
 
-        $policy = sanitize_text_field($_POST['policy'] ?? get_option('signdocs_default_policy', 'CLICK_ONLY'));
-        $locale = sanitize_text_field($_POST['locale'] ?? get_option('signdocs_default_locale', 'pt-BR'));
+        $policy = sanitize_text_field(wp_unslash($_POST['policy'] ?? get_option('signdocs_default_policy', 'CLICK_ONLY')));
+        $locale = sanitize_text_field(wp_unslash($_POST['locale'] ?? get_option('signdocs_default_locale', 'pt-BR')));
         $expiration = absint($_POST['expiration'] ?? get_option('signdocs_default_expiration', 60));
-        $return_url = esc_url_raw($_POST['return_url'] ?? '');
+        $return_url = esc_url_raw(wp_unslash($_POST['return_url'] ?? ''));
         $filename = basename($file_path);
 
         // Build signer external ID from email
@@ -175,6 +185,7 @@ final class Signdocs_Ajax
         } catch (\Throwable $e) {
             wp_send_json_error(['message' => $e->getMessage()], 500);
         }
+        // phpcs:enable WordPress.Security.NonceVerification.Missing
     }
 
     /**

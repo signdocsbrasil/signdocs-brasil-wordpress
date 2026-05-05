@@ -136,6 +136,13 @@ final class Signdocs_Webhook
     {
         global $wpdb;
 
+        // Direct postmeta lookup is the right call here: this runs in the
+        // hot webhook path (every TRANSACTION.* delivery) where WP_Query +
+        // meta_query allocates several hundred KB of object overhead per
+        // call vs. one prepared SELECT. Both placeholders are bound;
+        // caching is meaningless because each session_id/transaction_id
+        // is queried at most once before the post is updated.
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching
         $post_id = $wpdb->get_var(
             $wpdb->prepare(
                 "SELECT post_id FROM {$wpdb->postmeta}

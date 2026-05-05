@@ -137,7 +137,10 @@ final class Signdocs_Shortcode
             ? 'https://cdn.signdocs.com.br/v1/signdocs-brasil.js'
             : 'https://cdn-hml.signdocs.com.br/v1/signdocs-brasil.js';
 
-        wp_enqueue_script('signdocs-brasil-sdk', $cdn_url, [], null, true);
+        // The CDN serves an immutable `v1`-pinned bundle, so the explicit
+        // version arg is cosmetic — set to '1' so PCP's MissingVersion
+        // check passes and the dev-tools network panel stays readable.
+        wp_enqueue_script('signdocs-brasil-sdk', $cdn_url, [], '1', true);
         wp_enqueue_script(
             'signdocs-frontend',
             SIGNDOCS_PLUGIN_URL . 'assets/js/signdocs-frontend.js',

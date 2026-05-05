@@ -324,7 +324,10 @@ final class EventRouter {
 	private function queryByMeta( string $key, string $value ): int {
 		// WP_Query path — avoids a direct $wpdb->postmeta scan and
 		// restricts the lookup to our own CPT. `fields => ids` skips
-		// hydrating full WP_Post objects.
+		// hydrating full WP_Post objects. meta_query is the only way
+		// WP exposes finding posts by meta value; webhook lookups need
+		// it and the indexed (_signdocs_session_id, _signdocs_transaction_id)
+		// metas keep this O(log n).
 		$ids = \get_posts(
 			array(
 				'post_type'              => 'signdocs_signing',
@@ -334,6 +337,7 @@ final class EventRouter {
 				'no_found_rows'          => true,
 				'update_post_meta_cache' => false,
 				'update_post_term_cache' => false,
+				// phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_query
 				'meta_query'             => array(
 					array(
 						'key'     => $key,

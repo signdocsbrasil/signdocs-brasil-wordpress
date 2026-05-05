@@ -39,12 +39,17 @@ final class Eraser {
 	 */
 	public static function erase( string $email, int $page = 1 ): array {
 		$offset = ( $page - 1 ) * self::PAGE_SIZE;
+		// LGPD/GDPR eraser is invoked from wp-admin's Privacy panel as a
+		// one-shot admin operation, never on the request path. meta_query
+		// is the only WP-supported way to find posts by signer email; the
+		// "slow query" warning targets hot-path code, not this lookup.
 		$posts  = \get_posts(
 			array(
 				'post_type'   => 'signdocs_signing',
 				'post_status' => 'any',
 				'numberposts' => self::PAGE_SIZE,
 				'offset'      => $offset,
+				// phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_query
 				'meta_query'  => array(
 					array(
 						'key'     => '_signdocs_signer_email',
