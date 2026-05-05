@@ -5,7 +5,7 @@ Tags: electronic signature, digital signature, woocommerce, contracts, icp-brasi
 Requires at least: 6.0
 Tested up to: 6.9
 Requires PHP: 8.1
-Stable tag: 1.3.4
+Stable tag: 1.3.5
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -345,6 +345,12 @@ Yes. All user-facing strings are translatable (`signdocs-brasil` text domain) an
 
 == Changelog ==
 
+= 1.3.5 =
+
+WP.org submission auto-scanner fix.
+
+* **Differentiated Plugin URI from Author URI.** Both headers in `signdocs-brasil.php` were `https://signdocs.com.br`, which the WP.org submission auto-scanner rejects (the two URIs must be distinct or one omitted; per WP.org policy a Plugin URI is a page about this specific plugin and an Author URI is a page about the author). Plugin URI now points to the canonical GitHub repository (`https://github.com/signdocsbrasil/signdocs-brasil-wordpress`); Author URI remains the company site (`https://signdocs.com.br`). Once the plugin is approved on WP.org we may switch Plugin URI to the wordpress.org/plugins/signdocs-brasil/ page.
+
 = 1.3.4 =
 
 Plugin Check (PCP) hardening pass for WP.org submission. No runtime behavior changes — every fix in this release is either annotation, defensive cleanup, or removal of a benign-but-noisy header.
@@ -460,6 +466,9 @@ Hardening release + alignment with SignDocs PHP SDK 1.3.0.
 * Trilingual: pt-BR, en, es
 
 == Upgrade Notice ==
+
+= 1.3.5 =
+Plugin URI / Author URI differentiation for WP.org submission auto-scanner. Plugin URI now points to the GitHub repo (specific to this plugin); Author URI remains the company site. No behavior changes.
 
 = 1.3.4 =
 Plugin Check (PCP) hardening pass for WP.org submission. No behavior changes — defensive `wp_unslash()` on `$_POST` reads, documented `phpcs:ignore` annotations on the audit-log custom-table queries, dropped the unused `Domain Path` header.

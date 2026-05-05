@@ -1,9 +1,9 @@
 <?php
 /**
  * Plugin Name: SignDocs Brasil
- * Plugin URI:  https://signdocs.com.br
+ * Plugin URI:  https://github.com/signdocsbrasil/signdocs-brasil-wordpress
  * Description: Assinatura digital e eletrônica integrada ao seu site WordPress via SignDocs Brasil.
- * Version:     1.3.4
+ * Version:     1.3.5
  * Author:      SignDocs Brasil
  * Author URI:  https://signdocs.com.br
  * License:     GPL-2.0-or-later
@@ -17,7 +17,7 @@
 
 defined('ABSPATH') || exit;
 
-define('SIGNDOCS_VERSION', '1.3.4');
+define('SIGNDOCS_VERSION', '1.3.5');
 define('SIGNDOCS_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('SIGNDOCS_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('SIGNDOCS_PLUGIN_BASENAME', plugin_basename(__FILE__));
