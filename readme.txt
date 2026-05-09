@@ -5,7 +5,7 @@ Tags: electronic signature, digital signature, woocommerce, contracts, icp-brasi
 Requires at least: 6.0
 Tested up to: 6.9
 Requires PHP: 8.1
-Stable tag: 1.3.5
+Stable tag: 1.3.6
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -13,7 +13,7 @@ Legally-binding e-signature for Brazil: OTP, biometrics, ICP-Brasil, multi-signe
 
 == Description ==
 
-SignDocs Brasil is the most complete WordPress plugin for **legally-binding electronic signatures in Brazil**. Embed signing flows on any page with a shortcode or Gutenberg block, send multi-signer envelopes (sequential or parallel), verify signed evidence directly from the WordPress admin, and track everything through an audit log with CSV export.
+SignDocs Brasil is the official WordPress plugin for **legally-binding electronic signatures in Brazil**. Embed signing flows on any page with a shortcode or Gutenberg block, send multi-signer envelopes (sequential or parallel), verify signed evidence directly from the WordPress admin, and track everything through an audit log with CSV export.
 
 Built on top of the official SignDocs Brasil PHP SDK (`signdocs-brasil/signdocs-brasil-php`), the plugin leverages OAuth token caching shared across PHP-FPM workers, deterministic idempotency, webhook secret rotation with a grace window, and observability via `RateLimit-*` / `Deprecation` / `Sunset` response headers.
 
@@ -345,6 +345,13 @@ Yes. All user-facing strings are translatable (`signdocs-brasil` text domain) an
 
 == Changelog ==
 
+= 1.3.6 =
+
+WP.org reviewer feedback, round 1 (received 2026-05-05, ~9h after submission).
+
+* **Description rephrased.** The short description previously read "the most complete WordPress plugin for legally-binding electronic signatures in Brazil." That's a comparative marketing claim, which the WP.org Plugin Guidelines disallow (Guideline 11). Replaced with "the official WordPress plugin for legally-binding electronic signatures in Brazil" — factual (this is the first-party plugin published by SignDocs Brasil), non-comparative.
+* **Webhook REST route now uses a proper `permission_callback`.** Previously the route registered with `permission_callback => '__return_true'` and verified the HMAC signature inside the request handler. While that behaved correctly (signed-out requests were rejected), the WP REST introspection layer reported the endpoint as "publicly accessible," which the reviewer flagged. New `Signdocs_Webhook::authorize()` performs HMAC verification at the permission-check phase and returns `WP_Error` with a precise HTTP status (401 for invalid signatures, 500 for server-side misconfiguration). The handler is now responsible only for body parsing and event dispatch. No change to the wire contract — third-party callers (the SignDocs Brasil API server) see identical request / response behavior.
+
 = 1.3.5 =
 
 WP.org submission auto-scanner fix.
@@ -466,6 +473,9 @@ Hardening release + alignment with SignDocs PHP SDK 1.3.0.
 * Trilingual: pt-BR, en, es
 
 == Upgrade Notice ==
+
+= 1.3.6 =
+WP.org reviewer feedback round 1: rephrased one comparative description sentence and refactored the webhook REST route to use a proper `permission_callback` that performs HMAC verification (instead of `__return_true` with HMAC checked in the handler). No runtime behavior changes for callers.
 
 = 1.3.5 =
 Plugin URI / Author URI differentiation for WP.org submission auto-scanner. Plugin URI now points to the GitHub repo (specific to this plugin); Author URI remains the company site. No behavior changes.

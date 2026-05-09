@@ -21,26 +21,42 @@ final class Signdocs_Webhook
         register_rest_route('signdocs/v1', '/webhook', [
             'methods' => 'POST',
             'callback' => [$this, 'handle'],
-            'permission_callback' => '__return_true', // Auth is via HMAC signature
+            'permission_callback' => [$this, 'authorize'],
         ]);
     }
 
-    public function handle(\WP_REST_Request $request): \WP_REST_Response
+    /**
+     * REST permission callback. Authorizes the request via HMAC-SHA256
+     * signature verification — third-party webhook senders have no WP
+     * session, so HMAC is the auth surface here, not nonces / caps.
+     *
+     * Returning a `WP_Error` lets WP propagate a precise HTTP status
+     * (401 for bad signatures, 500 for server-side misconfiguration)
+     * rather than the default 403 a `false` return would produce.
+     *
+     * @return true|\WP_Error
+     */
+    public function authorize(\WP_REST_Request $request)
     {
-        nocache_headers();
-
         $body = $request->get_body();
         $signature = $request->get_header('X-SignDocs-Signature') ?? '';
         $timestamp = $request->get_header('X-SignDocs-Timestamp') ?? '';
 
-        // Verify HMAC signature
         $secret = Signdocs_Credentials::decrypt(get_option('signdocs_webhook_secret_enc', ''));
         if ($secret === '') {
-            return new \WP_REST_Response(['error' => 'Webhook secret not configured'], 500);
+            return new \WP_Error(
+                'signdocs_webhook_unconfigured',
+                __('Webhook secret not configured.', 'signdocs-brasil'),
+                ['status' => 500]
+            );
         }
 
         if (!class_exists(WebhookVerifier::class)) {
-            return new \WP_REST_Response(['error' => 'SDK not available'], 500);
+            return new \WP_Error(
+                'signdocs_webhook_sdk_missing',
+                __('SignDocs SDK not available.', 'signdocs-brasil'),
+                ['status' => 500]
+            );
         }
 
         $valid = WebhookVerifier::verify(
@@ -51,9 +67,21 @@ final class Signdocs_Webhook
         );
 
         if (!$valid) {
-            return new \WP_REST_Response(['error' => 'Invalid signature'], 401);
+            return new \WP_Error(
+                'signdocs_webhook_invalid_signature',
+                __('Invalid signature.', 'signdocs-brasil'),
+                ['status' => 401]
+            );
         }
 
+        return true;
+    }
+
+    public function handle(\WP_REST_Request $request): \WP_REST_Response
+    {
+        nocache_headers();
+
+        $body = $request->get_body();
         $payload = json_decode($body, true);
         if (!is_array($payload)) {
             return new \WP_REST_Response(['error' => 'Invalid JSON'], 400);
