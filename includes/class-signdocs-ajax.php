@@ -39,8 +39,11 @@ final class Signdocs_Ajax
 
         check_ajax_referer('signdocs_create_session', 'nonce');
 
-        // Rate limiting: 5 requests per IP per hour
-        $ip = sanitize_text_field(wp_unslash($_SERVER['REMOTE_ADDR'] ?? ''));
+        // Rate limiting: 5 requests per IP per hour.
+        // ClientIp::resolve() runs $_SERVER values through
+        // FILTER_VALIDATE_IP before returning, so a malformed REMOTE_ADDR
+        // cannot poison the rate-limit transient key.
+        $ip = \SignDocsBrasil\WordPress\Support\ClientIp::resolve();
         $transient_key = 'signdocs_rate_' . md5($ip);
         $count = (int) get_transient($transient_key);
         if ($count >= 5) {
@@ -81,6 +84,9 @@ final class Signdocs_Ajax
         if ($signer_name === '' || $signer_email === '') {
             wp_send_json_error(['message' => __('Nome e email do signatário são obrigatórios.', 'signdocs-brasil')]);
         }
+        if (!is_email($signer_email)) {
+            wp_send_json_error(['message' => __('Email inválido.', 'signdocs-brasil')]);
+        }
         if ($signer_cpf === '' && $signer_cnpj === '') {
             wp_send_json_error(['message' => __('CPF ou CNPJ é obrigatório (a API exige pelo menos um).', 'signdocs-brasil')]);
         }
@@ -108,7 +114,19 @@ final class Signdocs_Ajax
         }
 
         $policy = sanitize_text_field(wp_unslash($_POST['policy'] ?? get_option('signdocs_default_policy', 'CLICK_ONLY')));
+        $allowed_policies = array_keys(Signdocs_Settings::get_policy_options());
+        if (!in_array($policy, $allowed_policies, true)) {
+            // Fall back to configured default rather than 4xx — keeps
+            // existing shortcode integrations working even if a caller
+            // sends a deprecated profile name.
+            $policy = (string) get_option('signdocs_default_policy', 'CLICK_ONLY');
+        }
+
         $locale = sanitize_text_field(wp_unslash($_POST['locale'] ?? get_option('signdocs_default_locale', 'pt-BR')));
+        if (!in_array($locale, ['pt-BR', 'en', 'es'], true)) {
+            $locale = (string) get_option('signdocs_default_locale', 'pt-BR');
+        }
+
         $expiration = absint($_POST['expiration'] ?? get_option('signdocs_default_expiration', 60));
         $return_url = esc_url_raw(wp_unslash($_POST['return_url'] ?? ''));
         $filename = basename($file_path);
@@ -183,7 +201,10 @@ final class Signdocs_Ajax
                 'postId' => $post_id,
             ]);
         } catch (\Throwable $e) {
-            wp_send_json_error(['message' => $e->getMessage()], 500);
+            // Escape exception text — under unusual error conditions
+            // $e->getMessage() can contain characters that would break
+            // a frontend handler that does innerHTML on the response.
+            wp_send_json_error(['message' => esc_html($e->getMessage())], 500);
         }
         // phpcs:enable WordPress.Security.NonceVerification.Missing
     }

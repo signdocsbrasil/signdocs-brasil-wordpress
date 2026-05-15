@@ -344,7 +344,7 @@ final class Signdocs_Settings
             $client->health->check();
             wp_send_json_success();
         } catch (\Throwable $e) {
-            wp_send_json_error(['message' => $e->getMessage()]);
+            wp_send_json_error(['message' => esc_html($e->getMessage())]);
         }
     }
 
@@ -375,7 +375,7 @@ final class Signdocs_Settings
 
             wp_send_json_success(['webhookId' => $result->webhookId ?? '']);
         } catch (\Throwable $e) {
-            wp_send_json_error(['message' => $e->getMessage()]);
+            wp_send_json_error(['message' => esc_html($e->getMessage())]);
         }
     }
 

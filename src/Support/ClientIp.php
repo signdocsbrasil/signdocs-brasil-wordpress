@@ -20,12 +20,16 @@ final class ClientIp {
 	 * @param array<string,mixed>|null $server optional override (defaults to $_SERVER)
 	 */
 	public static function resolve( ?array $server = null ): string {
+		// phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized,WordPress.Security.ValidatedSanitizedInput.MissingUnslash -- $_SERVER values are validated through filter_var(FILTER_VALIDATE_IP) below before being returned, and WP magic-quotes does not slash $_SERVER.
 		$server ??= $_SERVER;
 		$remote   = isset( $server['REMOTE_ADDR'] ) ? (string) $server['REMOTE_ADDR'] : '';
 
 		$trusted = self::trustedProxies();
 		if ( $trusted === array() || ! self::isInRanges( $remote, $trusted ) ) {
-			return $remote;
+			// No trusted-proxy chain → return REMOTE_ADDR if it parses as
+			// a valid IPv4/IPv6 literal; otherwise return empty string so
+			// downstream callers never operate on a malformed value.
+			return self::isValidIp( $remote ) ? $remote : '';
 		}
 
 		$forwarded = isset( $server['HTTP_X_FORWARDED_FOR'] ) ? (string) $server['HTTP_X_FORWARDED_FOR'] : '';
@@ -44,7 +48,10 @@ final class ClientIp {
 			}
 		}
 
-		return $remote;
+		// Same validation gate as the no-trusted-proxy branch above: the
+		// proxy-walk fell through, so we return REMOTE_ADDR only if it
+		// is a syntactically valid IP, otherwise empty string.
+		return self::isValidIp( $remote ) ? $remote : '';
 	}
 
 	/**

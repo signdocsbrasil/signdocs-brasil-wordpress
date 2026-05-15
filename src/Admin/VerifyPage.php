@@ -52,7 +52,8 @@ final class VerifyPage {
 			&& \wp_verify_nonce( \sanitize_text_field( \wp_unslash( $_POST['signdocs_verify_nonce'] ) ), self::NONCE_ACTION )
 		) {
 			$id   = isset( $_POST['id'] ) ? \sanitize_text_field( \wp_unslash( $_POST['id'] ) ) : '';
-			$kind = isset( $_POST['kind'] ) && $_POST['kind'] === 'envelope' ? 'envelope' : 'evidence';
+			$kind_raw = isset( $_POST['kind'] ) ? \sanitize_text_field( \wp_unslash( $_POST['kind'] ) ) : '';
+			$kind = $kind_raw === 'envelope' ? 'envelope' : 'evidence';
 
 			$client = null;
 			if ( class_exists( 'Signdocs_Client_Factory' ) ) {

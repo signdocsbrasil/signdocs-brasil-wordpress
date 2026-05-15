@@ -5,7 +5,7 @@ Tags: electronic signature, digital signature, woocommerce, contracts, icp-brasi
 Requires at least: 6.0
 Tested up to: 6.9
 Requires PHP: 8.1
-Stable tag: 1.3.6
+Stable tag: 1.3.7
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -265,6 +265,38 @@ The configured SDK client (with encrypted credentials and shared token cache) is
 
 See the [PHP SDK documentation](https://github.com/signdocsbrasil/signdocs-brasil-php) for the full surface (transactions, envelopes, verification, users, documentGroups, webhooks, etc.).
 
+== External services ==
+
+This plugin connects to the SignDocs Brasil platform — operated by the same company that publishes the plugin — to create, deliver, and verify electronic signatures. The plugin **cannot function without** sending data to these endpoints, because the signing itself happens on the SignDocs servers (the WordPress site only orchestrates the request and stores the result reference).
+
+= SignDocs Brasil API (api.signdocs.com.br / api-hml.signdocs.com.br) =
+
+Used to create signing sessions, register webhooks, verify signed evidence, and manage multi-signer envelopes. The plugin authenticates with the API credentials you enter in the WordPress admin (OAuth2 `client_credentials`, or alternatively Private Key JWT when configured).
+
+* **What data is sent**, per signing-session create: the PDF document content (base64-encoded), the signer's name, the signer's email address, the signer's CPF or CNPJ (one is required by the API), the selected verification policy (e.g. `CLICK_ONLY`, `BIOMETRIC`), the language preference, an optional return URL, and metadata fields identifying the WordPress site URL and source surface (shortcode, AJAX, WP-CLI, WooCommerce, envelope).
+* **When**: every time a signing session is created. This happens on shortcode AJAX submission, on `wp signdocs send` from the WP-CLI, on WooCommerce order completion when the product is configured for signing, and on every envelope creation / new-signer add.
+* **Other API calls** that send no document data: webhook registration, status polling (`GET /v1/signing-sessions/{id}`), evidence verification (`GET /v1/verify/{evidenceId}`), envelope status. These send only the relevant identifier you provide (session ID, evidence ID, envelope ID).
+* **Authentication**: every API call is authenticated with a short-lived Bearer token obtained from the OAuth2 token endpoint at the same domain (`POST {baseUrl}/oauth2/token`). The plugin sends your Client ID and either Client Secret or a signed JWT assertion (when Private Key JWT mode is configured) to that endpoint at first call and again when the cached token expires (typically once per hour per environment); the access token is cached in a WordPress transient and reused across all subsequent API calls. No signer data is sent to the token endpoint.
+* **Environment switch**: the plugin uses `api-hml.signdocs.com.br` (HML / sandbox) by default, and `api.signdocs.com.br` only when the administrator explicitly switches the environment to "Production" in the settings page.
+* Provided by SignDocs Brasil. [Terms of Use](https://signdocs.com.br/termos-de-uso). [Privacy Policy](https://signdocs.com.br/politica-de-privacidade).
+
+= SignDocs Brasil browser SDK (cdn.signdocs.com.br / cdn-hml.signdocs.com.br) =
+
+A JavaScript file (`signdocs-brasil.js`) loaded from the SignDocs CDN that opens the signing popup, redirect, or overlay when the signer clicks the embedded "Sign Document" button rendered by the shortcode or Gutenberg block.
+
+* **What data is sent**: nothing directly by this script load — it is a static asset request, the same as any other JavaScript file from a third-party CDN. No personally identifiable information is transmitted by the CDN request itself; the script is bytes-identical for every site that loads it.
+* **When**: every front-end page-view that renders the `[signdocs]` shortcode or the SignDocs Gutenberg block (the script is enqueued conditionally — pages without the block do not load it).
+* The CDN environment (HML vs prod) follows the same `signdocs_environment` option as the API.
+* Provided by SignDocs Brasil. [Terms of Use](https://signdocs.com.br/termos-de-uso). [Privacy Policy](https://signdocs.com.br/politica-de-privacidade).
+
+= SignDocs Brasil signing UI (sign.signdocs.com.br) =
+
+After the signer clicks "Sign Document", they are taken to the secure signing page on `sign.signdocs.com.br` — **not** to a page hosted by your WordPress site. The signing flow (OTP, biometric capture, digital-certificate selection, click-only confirmation) executes entirely on this domain. This isolation is intentional: even if your WordPress site were compromised, an attacker could not forge signatures because the authentication factors are collected on a separate origin under SignDocs Brasil's control.
+
+* **What data is sent**: the signer interacts directly with this domain to complete the signing flow. The data exchanged here (OTP codes, biometric photos, certificate selections) does not pass through your WordPress site. Your plugin only receives the result back via the webhook described above.
+* **When**: when the signer clicks the signing button rendered by the plugin and the browser SDK opens the signing surface (popup / redirect / overlay).
+* Provided by SignDocs Brasil. [Terms of Use](https://signdocs.com.br/termos-de-uso). [Privacy Policy](https://signdocs.com.br/politica-de-privacidade).
+
 == Frequently Asked Questions ==
 
 = Do I need a SignDocs Brasil account? =
@@ -344,6 +376,17 @@ Yes. All user-facing strings are translatable (`signdocs-brasil` text domain) an
 10. WooCommerce order email with the signing link
 
 == Changelog ==
+
+= 1.3.7 =
+
+WP.org reviewer feedback, round 2 (review ID `signdocs-brasil/signdocsbrasil/8May26/T2 15May26/4.0`).
+
+* **New `== External services ==` section** documenting every external endpoint the plugin contacts: the SignDocs API (`api.signdocs.com.br` / `api-hml.signdocs.com.br`), the OAuth2 token endpoint at the same base URL, the browser SDK CDN (`cdn.signdocs.com.br` / `cdn-hml.signdocs.com.br`), and the signing UI (`sign.signdocs.com.br`). Each subsection states what data is sent, when, and links to [Terms of Use](https://signdocs.com.br/termos-de-uso) and [Privacy Policy](https://signdocs.com.br/politica-de-privacidade).
+* **Trusted-proxy IP resolver hardened.** `ClientIp::resolve()` previously returned `$_SERVER['REMOTE_ADDR']` verbatim when no trusted-proxy chain matched, propagating malformed values into the rate-limit transient key and audit log. Both return paths now gate on `filter_var(..., FILTER_VALIDATE_IP)`; invalid values become empty strings. The anonymous-signing AJAX rate limiter now routes through `ClientIp::resolve()` instead of reading `$_SERVER['REMOTE_ADDR']` directly.
+* **Allow-list validation on user-supplied policy / locale.** `Signdocs_Ajax::create_session` and `Signdocs_WooCommerce::save_product_meta` previously accepted any `sanitize_text_field`-cleaned string for the `policy` and `locale` fields, then forwarded it to the API. Both call sites now compare against the canonical lists (`Signdocs_Settings::get_policy_options()` for policy, `['pt-BR', 'en', 'es']` for locale) and fall back to the configured plugin default when the submitted value isn't recognized. Avoids 4xx round-trips against the SignDocs API for deprecated profile names.
+* **`is_email()` validation on signer email.** `sanitize_email()` strips invalid characters but doesn't reject a value that fails to parse as an email. Added an `is_email()` check next to the existing required-field validation in `Signdocs_Ajax::create_session`.
+* **`wp_unslash()` on remaining admin reads.** The Verify-page POST handler (`VerifyPage::render`) now unslashes `$_POST['kind']` before comparing, matching the WP coding standard the reviewer's AI expects.
+* **`esc_html` on exception messages reaching the frontend** in four call sites: `Signdocs_Ajax::create_session` (AJAX error response), `Signdocs_Settings::ajax_test_connection` and `::ajax_register_webhook` (settings-page AJAX), and `Signdocs_WooCommerce::create_signing_for_order` (order note). Exception text from upstream APIs can contain quotes or angle brackets that would break a frontend handler that does `innerHTML = response.message`.
 
 = 1.3.6 =
 
@@ -473,6 +516,9 @@ Hardening release + alignment with SignDocs PHP SDK 1.3.0.
 * Trilingual: pt-BR, en, es
 
 == Upgrade Notice ==
+
+= 1.3.7 =
+Reviewer round 2: new "External services" readme section with Terms of Use + Privacy Policy links per endpoint; trusted-proxy IP validates via `FILTER_VALIDATE_IP`; allow-list on policy/locale; `esc_html` on exception messages. No behavior changes.
 
 = 1.3.6 =
 WP.org reviewer feedback round 1: rephrased one comparative description sentence and refactored the webhook REST route to use a proper `permission_callback` that performs HMAC verification (instead of `__return_true` with HMAC checked in the handler). No runtime behavior changes for callers.

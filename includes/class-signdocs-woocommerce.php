@@ -82,10 +82,18 @@ final class Signdocs_WooCommerce
         // fires. Re-verifying here would be defensive duplication, but PCP
         // can't see across the WC dispatch boundary.
         // phpcs:disable WordPress.Security.NonceVerification.Missing
-        $enabled = isset($_POST['_signdocs_wc_enabled']) ? 'yes' : 'no';
-        update_post_meta($post_id, '_signdocs_wc_enabled', $enabled);
-        update_post_meta($post_id, '_signdocs_wc_document_id', absint($_POST['_signdocs_wc_document_id'] ?? 0));
-        update_post_meta($post_id, '_signdocs_wc_policy', sanitize_text_field(wp_unslash($_POST['_signdocs_wc_policy'] ?? '')));
+        $post = wp_unslash($_POST);
+
+        update_post_meta($post_id, '_signdocs_wc_enabled', isset($post['_signdocs_wc_enabled']) ? 'yes' : 'no');
+        update_post_meta($post_id, '_signdocs_wc_document_id', absint($post['_signdocs_wc_document_id'] ?? 0));
+
+        $policy = sanitize_text_field((string) ($post['_signdocs_wc_policy'] ?? ''));
+        if ($policy !== '' && !in_array($policy, array_keys(Signdocs_Settings::get_policy_options()), true)) {
+            // Unknown profile — store empty (means "use plugin default"
+            // at session-create time) rather than persist an unknown value.
+            $policy = '';
+        }
+        update_post_meta($post_id, '_signdocs_wc_policy', $policy);
         // phpcs:enable WordPress.Security.NonceVerification.Missing
     }
 
@@ -238,7 +246,7 @@ final class Signdocs_WooCommerce
                 sprintf(
                     /* translators: %s = exception message describing why session creation failed */
                     __('SignDocs: Erro ao criar sessão — %s', 'signdocs-brasil'),
-                    $e->getMessage()
+                    esc_html($e->getMessage())
                 )
             );
         }
