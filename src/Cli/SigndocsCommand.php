@@ -9,6 +9,7 @@ use SignDocsBrasil\Api\Models\Signer;
 use SignDocsBrasil\Api\Models\Policy;
 use SignDocsBrasil\WordPress\Admin\AuditQuery;
 use SignDocsBrasil\WordPress\Admin\Filters;
+use SignDocsBrasil\WordPress\Support\SigningUrl;
 
 /**
  * WP-CLI commands for operating the SignDocs Brasil plugin from
@@ -127,16 +128,9 @@ final class SigndocsCommand {
 			);
 			$session = $client->signingSessions->create( $request );
 
-			// Build the shareable signing URL. The base URL alone is NOT
-			// usable — it requires the embed token (clientSecret) appended
-			// as the `cs` query parameter. See sdks/docs/ for the contract.
-			$baseUrl       = (string) ( $session->url ?? '' );
-			$clientSecret  = (string) ( $session->clientSecret ?? '' );
-			$signingUrl    = $baseUrl;
-			if ( $baseUrl !== '' && $clientSecret !== '' ) {
-				$separator   = ( strpos( $baseUrl, '?' ) === false ) ? '?' : '&';
-				$signingUrl .= $separator . 'cs=' . rawurlencode( $clientSecret );
-			}
+			// The base URL alone is NOT usable — it requires the embed token
+			// (clientSecret) appended as the `cs` query parameter.
+			$signingUrl = SigningUrl::fromSession( $session );
 
 			\WP_CLI::success( 'session: ' . ( $session->sessionId ?? '?' ) );
 			\WP_CLI::line( 'sign at: ' . $signingUrl );
@@ -156,9 +150,11 @@ final class SigndocsCommand {
 	 * embed token (clientSecret) returned by the create call, not the
 	 * tenant's OAuth bearer. To use this command you must supply the
 	 * clientSecret your application stored after creating the session.
-	 * If you only have the sessionId, look it up in WP Admin >
-	 * Signatures (the CPT meta `_signdocs_session_url` carries the
-	 * full embed URL with cs=).
+	 * If you only have the sessionId, open the record in WP Admin >
+	 * Signatures: as of v1.3.8 the CPT meta `_signdocs_session_url`
+	 * holds the assembled link, so the token is the value of its `cs`
+	 * query parameter. Records created before v1.3.8 stored the bare
+	 * url and carry no recoverable token — resend those instead.
 	 *
 	 * ## OPTIONS
 	 *

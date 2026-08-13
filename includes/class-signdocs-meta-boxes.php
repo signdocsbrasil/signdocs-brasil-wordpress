@@ -49,7 +49,16 @@ final class Signdocs_Meta_Boxes
             echo '<th scope="row">' . esc_html($label) . '</th>';
             echo '<td>';
             if ($key === '_signdocs_session_url') {
-                printf('<a href="%s" target="_blank" rel="noopener">%s</a>', esc_url($value), esc_html($value));
+                // The stored value carries the session's embed token in `?cs=`
+                // — it is the signer's credential, not a plain URL. Keep it
+                // clickable (and copyable via the context menu) but out of the
+                // rendered text, so it doesn't leak into screenshots or over a
+                // shoulder during support calls.
+                printf(
+                    '<a href="%s" target="_blank" rel="noopener">%s</a>',
+                    esc_url($value),
+                    esc_html__('Abrir link de assinatura', 'signdocs-brasil'),
+                );
             } else {
                 echo '<code>' . esc_html($value) . '</code>';
             }

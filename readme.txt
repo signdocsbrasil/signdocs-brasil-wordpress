@@ -5,7 +5,7 @@ Tags: electronic signature, digital signature, woocommerce, contracts, icp-brasi
 Requires at least: 6.0
 Tested up to: 6.9
 Requires PHP: 8.1
-Stable tag: 1.3.7
+Stable tag: 1.3.8
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -377,6 +377,18 @@ Yes. All user-facing strings are translatable (`signdocs-brasil` text domain) an
 
 == Changelog ==
 
+= 1.3.8 =
+
+Fixes a broken signing link in the WooCommerce flow.
+
+* **WooCommerce order emails delivered an unusable signing link.** `POST /v1/signing-sessions` returns `url` and `clientSecret` as two separate fields, and the signing page requires the token as a `cs` query parameter — `url` on its own is rejected with HTTP 400. The WooCommerce integration stored the bare `url` in the `_signdocs_session_url` order meta, and the "Assinar Documento" button in the order email pointed at it. Customers who clicked it landed on an error page. The link is now assembled before it is stored.
+* **Same fix applied to the signing CPT.** The `_signdocs_session_url` post meta written by both the AJAX (shortcode / block) and WooCommerce paths held the bare `url`, so the "URL de Assinatura" row in the admin detail view was equally unusable when copied out. The shortcode and block flows themselves were never affected — the browser assembles the link from the AJAX response — and neither was `wp signdocs send`.
+* **New `SignDocsBrasil\WordPress\Support\SigningUrl` helper** is now the single place that assembles `url` + `clientSecret`, replacing the one correct inline copy that lived in the WP-CLI command. Covered by `tests/Unit/SigningUrlTest.php` (7 tests), including URL-encoding of tokens containing `+`, `/` or `=`, and correct separator choice when the URL already carries a query string.
+* **The admin no longer prints the token as visible text.** The "URL de Assinatura" row renders as a labelled link instead of the raw URL. The value carries the signer's single-use embed token, so it stays clickable and copyable from the context menu without being exposed in screenshots or over a shoulder.
+* **Corrected the `wp signdocs status` docblock**, which stated that the `_signdocs_session_url` meta already carried the full embed URL with `cs=`. It did not.
+
+**Upgrading:** sessions created before 1.3.8 stored no `clientSecret`, so their links cannot be repaired retroactively — resend those. Sessions created from 1.3.8 on are unaffected. If you have configured "E-mail do solicitante" in the plugin settings, SignDocs was already dispatching its own invitation email with a correctly assembled link, which is why the flow may have appeared to work.
+
 = 1.3.7 =
 
 WP.org reviewer feedback, round 2 (review ID `signdocs-brasil/signdocsbrasil/8May26/T2 15May26/4.0`).
@@ -516,6 +528,9 @@ Hardening release + alignment with SignDocs PHP SDK 1.3.0.
 * Trilingual: pt-BR, en, es
 
 == Upgrade Notice ==
+
+= 1.3.8 =
+Fixes the WooCommerce order email delivering a signing link that returned an error: the session's embed token was missing from the URL. Recommended for every WooCommerce install. Links created before 1.3.8 cannot be repaired — resend those sessions.
 
 = 1.3.7 =
 Reviewer round 2: new "External services" readme section with Terms of Use + Privacy Policy links per endpoint; trusted-proxy IP validates via `FILTER_VALIDATE_IP`; allow-list on policy/locale; `esc_html` on exception messages. No behavior changes.

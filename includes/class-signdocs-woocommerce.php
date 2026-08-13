@@ -6,6 +6,7 @@ use SignDocsBrasil\Api\Models\CreateSigningSessionRequest;
 use SignDocsBrasil\Api\Models\Owner;
 use SignDocsBrasil\Api\Models\Policy;
 use SignDocsBrasil\Api\Models\Signer;
+use SignDocsBrasil\WordPress\Support\SigningUrl;
 
 /**
  * Optional WooCommerce integration.
@@ -209,8 +210,11 @@ final class Signdocs_WooCommerce
 
             $session = $client->signingSessions->create($request);
 
-            // Store session URL on the order
-            $order->update_meta_data('_signdocs_session_url', $session->url ?? '');
+            // Store the *assembled* signing URL on the order. `$session->url`
+            // alone 400s — it needs the embed token as `?cs=`. See SigningUrl.
+            $signing_url = SigningUrl::fromSession($session);
+
+            $order->update_meta_data('_signdocs_session_url', $signing_url);
             $order->update_meta_data('_signdocs_session_id', $session->sessionId ?? '');
             $order->save();
 
@@ -229,7 +233,7 @@ final class Signdocs_WooCommerce
                 update_post_meta($post_id, '_signdocs_signer_email', $signer_email);
                 update_post_meta($post_id, '_signdocs_policy', $policy);
                 update_post_meta($post_id, '_signdocs_document_attachment_id', $document_id);
-                update_post_meta($post_id, '_signdocs_session_url', $session->url ?? '');
+                update_post_meta($post_id, '_signdocs_session_url', $signing_url);
                 update_post_meta($post_id, '_signdocs_source', 'woocommerce');
                 update_post_meta($post_id, '_signdocs_wc_order_id', $order->get_id());
             }

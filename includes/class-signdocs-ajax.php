@@ -6,6 +6,7 @@ use SignDocsBrasil\Api\Models\CreateSigningSessionRequest;
 use SignDocsBrasil\Api\Models\Owner;
 use SignDocsBrasil\Api\Models\Policy;
 use SignDocsBrasil\Api\Models\Signer;
+use SignDocsBrasil\WordPress\Support\SigningUrl;
 
 /**
  * AJAX handler for creating signing sessions from the frontend.
@@ -190,7 +191,9 @@ final class Signdocs_Ajax
                 update_post_meta($post_id, '_signdocs_signer_email', $signer_email);
                 update_post_meta($post_id, '_signdocs_policy', $policy);
                 update_post_meta($post_id, '_signdocs_document_attachment_id', $document_id);
-                update_post_meta($post_id, '_signdocs_session_url', $session->url ?? '');
+                // Assembled link (url + `?cs=`), not the bare url — the admin
+                // renders this meta as a clickable "URL de Assinatura".
+                update_post_meta($post_id, '_signdocs_session_url', SigningUrl::fromSession($session));
                 update_post_meta($post_id, '_signdocs_source', $source);
             }
 
