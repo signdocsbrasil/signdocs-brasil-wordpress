@@ -365,7 +365,19 @@ final class Signdocs_Settings
             $result = $client->webhooks->register(
                 new \SignDocsBrasil\Api\Models\RegisterWebhookRequest(
                     url: rest_url('signdocs/v1/webhook'),
-                    events: ['TRANSACTION.COMPLETED', 'TRANSACTION.CANCELLED', 'TRANSACTION.EXPIRED'],
+                    // Envelope events are subscribed alongside the transaction
+                    // ones: an envelope's member sessions emit TRANSACTION.*,
+                    // which keeps each signer current, but only ENVELOPE.*
+                    // reports the envelope's own terminal state and carries the
+                    // combined-stamp download URL.
+                    events: [
+                        'TRANSACTION.COMPLETED',
+                        'TRANSACTION.CANCELLED',
+                        'TRANSACTION.EXPIRED',
+                        'ENVELOPE.ALL_SIGNED',
+                        'ENVELOPE.CANCELLED',
+                        'ENVELOPE.EXPIRED',
+                    ],
                 ),
             );
 

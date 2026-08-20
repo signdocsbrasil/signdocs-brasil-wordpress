@@ -36,7 +36,13 @@ final class EventRouter {
 		$sessionId     = (string) ( $payload['data']['sessionId'] ?? '' );
 		$transactionId = (string) ( $payload['data']['transactionId'] ?? $payload['transactionId'] ?? '' );
 
-		$postId = $this->findPost( $sessionId, $transactionId );
+		// Envelope events resolve their own record and must not consult this
+		// lookup: their top-level transactionId belongs to the last signer, so
+		// it would resolve to a member session. Skipping it here makes that
+		// structural rather than a property of each case remembering not to
+		// use $postId — and saves a postmeta query per envelope event.
+		$isEnvelopeEvent = str_starts_with( $eventType, 'ENVELOPE.' );
+		$postId          = $isEnvelopeEvent ? 0 : $this->findPost( $sessionId, $transactionId );
 
 		// Events that target a specific session CPT record.
 		switch ( $eventType ) {
@@ -174,6 +180,75 @@ final class EventRouter {
 					'handled' => true,
 				);
 
+			// Envelope-level events. These resolve their own record — see
+			// findEnvelopePost for why $postId is not reused here.
+			case 'ENVELOPE.ALL_SIGNED':
+			case 'ENVELOPE.CANCELLED':
+			case 'ENVELOPE.EXPIRED':
+				$envelopeId   = (string) ( $payload['data']['envelopeId'] ?? '' );
+				$envelopePost = $this->findEnvelopePost( $envelopeId );
+				if ( $envelopePost === 0 ) {
+					break;
+				}
+
+				$status = array(
+					'ENVELOPE.ALL_SIGNED' => 'COMPLETED',
+					'ENVELOPE.CANCELLED'  => 'CANCELLED',
+					'ENVELOPE.EXPIRED'    => 'EXPIRED',
+				)[ $eventType ];
+
+				\update_post_meta( $envelopePost, '_signdocs_status', $status );
+				\update_post_meta( $envelopePost, '_signdocs_webhook_payload', \wp_json_encode( $payload ) );
+
+				if ( $eventType === 'ENVELOPE.ALL_SIGNED' ) {
+					\update_post_meta(
+						$envelopePost,
+						'_signdocs_completed_at',
+						(string) ( $payload['data']['completedAt'] ?? $payload['timestamp'] ?? '' )
+					);
+
+					// Presigned and short-lived — the API sends an expiry
+					// alongside it. Stored with the moment it arrived so the
+					// admin screen can tell a stale link from a live one rather
+					// than offering a download that 403s.
+					$combined = (string) ( $payload['data']['combinedDownloadUrl'] ?? '' );
+					if ( $combined !== '' ) {
+						\update_post_meta( $envelopePost, '_signdocs_combined_url', $combined );
+						\update_post_meta(
+							$envelopePost,
+							'_signdocs_combined_url_expires',
+							time() + (int) ( $payload['data']['combinedDownloadUrlExpiresIn'] ?? 3600 )
+						);
+					}
+				}
+
+				\do_action( 'signdocs_envelope_' . strtolower( (string) explode( '.', $eventType )[1] ), $envelopePost, $payload );
+				Logger::info(
+					'webhook.envelope',
+					'Envelope event applied',
+					array(
+						'eventType'  => $eventType,
+						'envelopeId' => $envelopeId,
+						'postId'     => $envelopePost,
+					)
+				);
+				return array(
+					'matched' => true,
+					'event'   => $eventType,
+					'handled' => true,
+				);
+
+			case 'ENVELOPE.CREATED':
+				// The plugin writes the envelope record itself when it sends,
+				// so this arrives after the fact and would only re-assert what
+				// is already there. Acknowledged so it is not logged as
+				// unmatched noise on every send.
+				return array(
+					'matched' => false,
+					'event'   => $eventType,
+					'handled' => true,
+				);
+
 			// Events that DON'T target a specific CPT record.
 			case 'QUOTA.WARNING':
 				\set_transient( 'signdocs_quota_notice', $payload, DAY_IN_SECONDS );
@@ -298,6 +373,21 @@ final class EventRouter {
 		\update_post_meta( $postId, '_signdocs_step_log', \wp_json_encode( $log ) );
 	}
 
+	/**
+	 * Resolve the envelope's own record.
+	 *
+	 * Deliberately separate from findPost. An `ENVELOPE.*` payload carries a
+	 * top-level `transactionId`, but it belongs to the **last signer**, not to
+	 * the envelope — routing on it would silently apply the envelope's terminal
+	 * status to one member session and leave the envelope untouched.
+	 */
+	private function findEnvelopePost( string $envelopeId ): int {
+		if ( $envelopeId === '' || ! $this->isSafeId( $envelopeId ) ) {
+			return 0;
+		}
+		return $this->queryByMeta( '_signdocs_envelope_id', $envelopeId, \SignDocsBrasil\WordPress\Cpt\EnvelopeCpt::POST_TYPE );
+	}
+
 	private function findPost( string $sessionId, string $transactionId ): int {
 		if ( $sessionId !== '' && $this->isSafeId( $sessionId ) ) {
 			$id = $this->queryByMeta( '_signdocs_session_id', $sessionId );
@@ -321,7 +411,7 @@ final class EventRouter {
 		return (bool) preg_match( '/^[A-Za-z0-9_\-]{1,64}$/', $value );
 	}
 
-	private function queryByMeta( string $key, string $value ): int {
+	private function queryByMeta( string $key, string $value, string $postType = 'signdocs_signing' ): int {
 		// WP_Query path — avoids a direct $wpdb->postmeta scan and
 		// restricts the lookup to our own CPT. `fields => ids` skips
 		// hydrating full WP_Post objects. meta_query is the only way
@@ -330,7 +420,7 @@ final class EventRouter {
 		// metas keep this O(log n).
 		$ids = \get_posts(
 			array(
-				'post_type'              => 'signdocs_signing',
+				'post_type'              => $postType,
 				'post_status'            => 'any',
 				'numberposts'            => 1,
 				'fields'                 => 'ids',
