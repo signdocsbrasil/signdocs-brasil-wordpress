@@ -34,7 +34,7 @@ The plugin targets the Brazilian market (compliance with MP 2.200-2/2001, ICP-Br
 = Features =
 
 * Shortcode `[signdocs]` and Gutenberg block to embed the signing button on any post or page
-* Custom post type `signdocs_envelope` for multi-signer workflows with a signer repeater
+* Custom post type `signdocs_envelope` for multi-signer workflows with a signer repeater, media-library document picker, and per-signer status tracking
 * "Verify Document" admin page — paste an evidence ID or envelope ID and inspect signer identities, tenant CNPJ, consolidated downloads
 * Audit log with filters by level, event type, and date range, plus streaming CSV export (via `php://output`, safe for multi-GB exports)
 * Webhook secret rotation with a 7-day grace window — both secrets (current + previous) are accepted during rotation
@@ -379,7 +379,17 @@ Yes. All user-facing strings are translatable (`signdocs-brasil` text domain) an
 
 = 1.4.0 =
 
-Stops a completed WooCommerce order from being signed twice, and keys the other two signing paths.
+Multi-signer envelopes now work, and a completed WooCommerce order can no longer be signed twice.
+
+* **Envelopes are functional.** The `signdocs_envelope` post type has been registered and visible in the admin since 1.2.0, and the listing has described multi-signer envelopes since then, but nothing was wired to it: there was no signer repeater, no document picker, and no code path that sent an envelope to the API. Creating one saved a title and did nothing. It now has all three.
+  * Compose screen: pick a PDF from the media library, choose parallel or sequential order and a signature profile, and add signers with name, e-mail and CPF or CNPJ.
+  * Sending creates the envelope and one session per signer, and mirrors each signer as a child record of the envelope. Those children are ordinary signing records, so the webhooks that already keep single-signer status current keep every signer in an envelope current too, with no extra configuration.
+  * Per-signer sessions carry a distinct idempotency key derived from the envelope and the signer's position. One key across an envelope would return the first signer's session — client secret included — for every signer.
+  * **A partly-sent envelope is resumable.** The envelope and its sessions are separate API calls, so a failure part-way leaves fewer sessions than signers. The screen says so and offers to send the rest; the ones already created are replayed rather than charged again.
+  * Duplicate e-mail addresses and single-signer envelopes are refused before anything is sent, since the API accepts both and the result is one person invited twice, or an envelope that should have been a plain signing session.
+  * New `ENVELOPE.ALL_SIGNED`, `ENVELOPE.CANCELLED` and `ENVELOPE.EXPIRED` webhook subscriptions record the envelope's own outcome and store the combined-stamp download link when every signer has finished. Re-register your webhook from Settings to receive them.
+
+**Also in this release — stops a completed WooCommerce order being signed twice, and keys the other two signing paths.**
 
 * **Re-completing a WooCommerce order created a second signing session.** `woocommerce_order_status_completed` is not a once-per-order event — an administrator moving an order out of completed and back, a bulk status re-apply, or a payment gateway re-firing the transition all reach the handler again. Each time, it bought another signature, spent quota again, and emailed the customer a second link for a document they had already been asked to sign. The order now records which documents it has already produced a session for and skips them.
   * The guard is per document, not per order: `_signdocs_session_id` holds a single value that each signing overwrites, so an order containing two signable products only ever remembered the last one. A per-order guard would have silently stopped the second product being sent for signature.
@@ -544,7 +554,7 @@ Hardening release + alignment with SignDocs PHP SDK 1.3.0.
 == Upgrade Notice ==
 
 = 1.4.0 =
-Stops a re-completed WooCommerce order creating a second signing session and charging for it, and adds idempotency keys to the admin, WooCommerce and CLI signing paths. Recommended for every install, especially WooCommerce.
+Multi-signer envelopes now actually work — the admin screen existed but nothing was wired to it. Also stops a re-completed WooCommerce order creating a second signing session and charging for it. Recommended for every install. Re-register your webhook in Settings to receive envelope events.
 
 = 1.3.8 =
 Fixes the WooCommerce order email delivering a signing link that returned an error: the session's embed token was missing from the URL. Recommended for every WooCommerce install. Links created before 1.3.8 cannot be repaired — resend those sessions.
