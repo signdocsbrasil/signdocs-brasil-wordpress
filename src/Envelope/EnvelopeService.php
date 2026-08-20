@@ -5,8 +5,10 @@ declare(strict_types=1);
 namespace SignDocsBrasil\WordPress\Envelope;
 
 use SignDocsBrasil\Api\Models\AddEnvelopeSessionRequest;
+use SignDocsBrasil\Api\Models\CancelEnvelopeResponse;
 use SignDocsBrasil\Api\Models\CreateEnvelopeRequest;
 use SignDocsBrasil\Api\Models\Envelope;
+use SignDocsBrasil\Api\Models\EnvelopeCombinedStampResponse;
 use SignDocsBrasil\Api\Models\EnvelopeDetail;
 use SignDocsBrasil\Api\Models\EnvelopeSession;
 use SignDocsBrasil\Api\Models\Owner;
@@ -121,7 +123,25 @@ final class EnvelopeService {
 		return $this->client->envelopes->addSession( $envelopeId, $request, $idempotencyKey );
 	}
 
-	public function combinedStamp( string $envelopeId ): mixed {
+	/**
+	 * Generate the combined stamped PDF for a completed envelope.
+	 *
+	 * Naturally idempotent upstream: if the PDF already exists the API
+	 * presigns the one it has rather than rebuilding it, so calling this again
+	 * to refresh an expired link is cheap and does not re-stamp anything.
+	 */
+	public function combinedStamp( string $envelopeId ): EnvelopeCombinedStampResponse {
 		return $this->client->envelopes->combinedStamp( $envelopeId );
+	}
+
+	/**
+	 * Cancel an entire envelope.
+	 *
+	 * Idempotent: re-cancelling returns `cancelledCount` 0 and
+	 * `alreadyCancelled` true rather than failing, so a double-clicked button
+	 * needs no key.
+	 */
+	public function cancel( string $envelopeId, ?string $reason = null ): CancelEnvelopeResponse {
+		return $this->client->envelopes->cancel( $envelopeId, $reason );
 	}
 }

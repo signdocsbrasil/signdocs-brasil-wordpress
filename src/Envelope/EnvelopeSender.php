@@ -35,6 +35,13 @@ final class EnvelopeSender {
 	public const META_SIGNERS      = '_signdocs_signers';
 	public const META_SENT_INDEXES = '_signdocs_sent_signer_indexes';
 
+	/** Presigned and short-lived; always read together. */
+	public const META_COMBINED_URL     = '_signdocs_combined_url';
+	public const META_COMBINED_EXPIRES = '_signdocs_combined_url_expires';
+
+	/** Statuses past which an envelope can no longer be cancelled. */
+	public const TERMINAL_STATUSES = array( 'COMPLETED', 'CANCELLED', 'EXPIRED' );
+
 	public function __construct(
 		private readonly EnvelopeService $service,
 	) {
@@ -121,6 +128,93 @@ final class EnvelopeSender {
 			'created'    => $created,
 			'replayed'   => $replayed,
 		);
+	}
+
+	/**
+	 * Cancel the whole envelope through its own endpoint.
+	 *
+	 * Not the same as cancelling each member session: that leaves the
+	 * envelope's own status ACTIVE, costs a call per signer, and records N
+	 * separate events instead of one auditable cancellation. Signatures
+	 * already collected are preserved upstream and reported back.
+	 *
+	 * @return array{cancelled: int, preserved: int, alreadyCancelled: bool}
+	 */
+	public function cancel( int $envelopePostId, string $reason ): array {
+		$envelopeId = (string) \get_post_meta( $envelopePostId, self::META_ENVELOPE_ID, true );
+		if ( $envelopeId === '' ) {
+			throw new \RuntimeException( __( 'Este envelope ainda não foi enviado.', 'signdocs-brasil' ) );
+		}
+
+		$result = $this->service->cancel( $envelopeId, $reason );
+
+		\update_post_meta( $envelopePostId, self::META_STATUS, 'CANCELLED' );
+
+		// The children mirror sessions that are now dead upstream. The webhook
+		// will say so too, but only for the ones that were still pending —
+		// writing it here means the screen is right immediately rather than
+		// after the deliveries land.
+		foreach ( $this->children( $envelopePostId ) as $childId ) {
+			$childStatus = (string) \get_post_meta( $childId, '_signdocs_status', true );
+			if ( in_array( $childStatus, array( 'COMPLETED', 'CANCELLED', 'EXPIRED' ), true ) ) {
+				continue;
+			}
+			\update_post_meta( $childId, '_signdocs_status', 'CANCELLED' );
+		}
+
+		return array(
+			'cancelled'        => (int) ( $result->cancelledCount ?? 0 ),
+			'preserved'        => (int) ( $result->preservedSignedCount ?? 0 ),
+			'alreadyCancelled' => (bool) ( $result->alreadyCancelled ?? false ),
+		);
+	}
+
+	/**
+	 * Mint a combined stamped PDF and store the link.
+	 *
+	 * The URL is presigned and short-lived, so the moment it stops working is
+	 * stored with it. Without that the screen would keep offering a link that
+	 * has silently become a 403.
+	 *
+	 * @return array{url: string, signerCount: int}
+	 */
+	public function refreshCombinedStamp( int $envelopePostId ): array {
+		$envelopeId = (string) \get_post_meta( $envelopePostId, self::META_ENVELOPE_ID, true );
+		if ( $envelopeId === '' ) {
+			throw new \RuntimeException( __( 'Este envelope ainda não foi enviado.', 'signdocs-brasil' ) );
+		}
+
+		$stamp = $this->service->combinedStamp( $envelopeId );
+
+		$url = (string) ( $stamp->downloadUrl ?? '' );
+		if ( $url === '' ) {
+			throw new \RuntimeException( __( 'A API não retornou um link para o PDF combinado.', 'signdocs-brasil' ) );
+		}
+
+		\update_post_meta( $envelopePostId, self::META_COMBINED_URL, $url );
+		\update_post_meta(
+			$envelopePostId,
+			self::META_COMBINED_EXPIRES,
+			time() + (int) ( $stamp->expiresIn ?? 3600 )
+		);
+
+		return array(
+			'url'         => $url,
+			'signerCount' => (int) ( $stamp->signerCount ?? 0 ),
+		);
+	}
+
+	/** @return list<int> */
+	private function children( int $envelopePostId ): array {
+		$children = \get_children(
+			array(
+				'post_parent' => $envelopePostId,
+				'post_type'   => \Signdocs_CPT::POST_TYPE,
+				'numberposts' => EnvelopeDraft::MAX_SIGNERS,
+				'fields'      => 'ids',
+			)
+		);
+		return is_array( $children ) ? array_map( 'intval', array_values( $children ) ) : array();
 	}
 
 	/**

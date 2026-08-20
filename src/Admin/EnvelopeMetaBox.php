@@ -168,6 +168,78 @@ final class EnvelopeMetaBox {
 	}
 
 	/**
+	 * The combined PDF, and cancellation.
+	 *
+	 * Both are shown from the same place because which one applies is decided
+	 * by the same status: an envelope that everyone has signed offers the
+	 * document, and one that is still running offers to stop it.
+	 */
+	private function renderCompletedActions( \WP_Post $post, string $status ): void {
+		\wp_nonce_field( self::NONCE_ACTION, self::NONCE_FIELD );
+
+		if ( $status === 'COMPLETED' ) {
+			$url     = (string) \get_post_meta( $post->ID, EnvelopeSender::META_COMBINED_URL, true );
+			$expires = (int) \get_post_meta( $post->ID, EnvelopeSender::META_COMBINED_EXPIRES, true );
+
+			// A presigned URL that has run out is worse than none: it looks
+			// like a working download and answers 403. Offer to mint a fresh
+			// one instead of rendering the dead link.
+			$live = $url !== '' && $expires > time();
+
+			echo '<h4>' . \esc_html__( 'Documento assinado', 'signdocs-brasil' ) . '</h4>';
+
+			if ( $live ) {
+				printf(
+					'<p><a class="button button-primary" href="%s" target="_blank" rel="noopener">%s</a></p>',
+					\esc_url( $url ),
+					\esc_html__( 'Baixar PDF combinado', 'signdocs-brasil' )
+				);
+				printf(
+					'<p class="description">%s</p>',
+					\esc_html(
+						sprintf(
+							/* translators: %s: human-readable time difference, e.g. "45 minutos". */
+							__( 'O link expira em %s. Depois disso, gere um novo.', 'signdocs-brasil' ),
+							\human_time_diff( time(), $expires )
+						)
+					)
+				);
+			} else {
+				echo '<p class="description">'
+					. \esc_html__( 'O link de download expira depois de algumas horas. Gere um novo quando precisar.', 'signdocs-brasil' )
+					. '</p>';
+			}
+
+			printf(
+				'<p><button type="submit" name="signdocs_envelope_action" value="combined_stamp" class="button">%s</button></p>',
+				\esc_html(
+					$live
+						? __( 'Gerar novo link', 'signdocs-brasil' )
+						: __( 'Gerar PDF combinado', 'signdocs-brasil' )
+				)
+			);
+			return;
+		}
+
+		if ( in_array( $status, EnvelopeSender::TERMINAL_STATUSES, true ) ) {
+			return;
+		}
+
+		echo '<h4>' . \esc_html__( 'Cancelar', 'signdocs-brasil' ) . '</h4>';
+		echo '<p class="description">'
+			. \esc_html__( 'Cancela o envelope inteiro e derruba os links pendentes. Assinaturas já coletadas são preservadas.', 'signdocs-brasil' )
+			. '</p>';
+		printf(
+			'<p><label for="signdocs-envelope-cancel-reason">%s</label><br /><input type="text" class="regular-text" id="signdocs-envelope-cancel-reason" name="signdocs_envelope_cancel_reason" value="" /></p>',
+			\esc_html__( 'Motivo (registrado na trilha de auditoria)', 'signdocs-brasil' )
+		);
+		printf(
+			'<p><button type="submit" name="signdocs_envelope_action" value="cancel" class="button button-link-delete">%s</button></p>',
+			\esc_html__( 'Cancelar envelope', 'signdocs-brasil' )
+		);
+	}
+
+	/**
 	 * @param array<string, mixed> $signer
 	 */
 	private function renderSignerRow( int $index, array $signer ): void {
@@ -246,6 +318,8 @@ final class EnvelopeMetaBox {
 			);
 		}
 		echo '</tbody></table>';
+
+		$this->renderCompletedActions( $post, $status );
 
 		if ( count( $children ) < $total ) {
 			echo '<div class="notice notice-warning inline"><p>';

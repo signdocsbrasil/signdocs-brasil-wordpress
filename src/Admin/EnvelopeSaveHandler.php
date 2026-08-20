@@ -80,11 +80,84 @@ final class EnvelopeSaveHandler {
 		$action = isset( $_POST['signdocs_envelope_action'] )
 			? \sanitize_text_field( \wp_unslash( (string) $_POST['signdocs_envelope_action'] ) )
 			: '';
-		if ( $action !== 'send' ) {
+		switch ( $action ) {
+			case 'send':
+				$this->doSend( $postId, $alreadySent, $rawSigners, $mode, $policy, $docId );
+				return;
+			case 'cancel':
+				$this->doCancel( $postId );
+				return;
+			case 'combined_stamp':
+				$this->doCombinedStamp( $postId );
+				return;
+		}
+	}
+
+	private function doCancel( int $postId ): void {
+		$reason = isset( $_POST['signdocs_envelope_cancel_reason'] )
+			? \sanitize_text_field( \wp_unslash( (string) $_POST['signdocs_envelope_cancel_reason'] ) )
+			: '';
+		if ( $reason === '' ) {
+			$reason = 'cancelled_via_wordpress';
+		}
+
+		$sender = $this->sender();
+		if ( $sender === null ) {
+			$this->notice( $postId, 'error', __( 'Credenciais do SignDocs não configuradas.', 'signdocs-brasil' ) );
 			return;
 		}
 
-		$this->doSend( $postId, $alreadySent, $rawSigners, $mode, $policy, $docId );
+		try {
+			$result = $sender->cancel( $postId, $reason );
+
+			$this->notice(
+				$postId,
+				'success',
+				$result['alreadyCancelled']
+					? __( 'Este envelope já estava cancelado.', 'signdocs-brasil' )
+					: sprintf(
+						/* translators: 1: sessions cancelled, 2: signatures preserved. */
+						__( 'Envelope cancelado. %1$d sessões encerradas, %2$d assinaturas preservadas.', 'signdocs-brasil' ),
+						$result['cancelled'],
+						$result['preserved']
+					)
+			);
+		} catch ( \Throwable $e ) {
+			Logger::error( 'envelope.cancel', 'Envelope cancel failed', array( 'postId' => $postId, 'error' => $e->getMessage() ) );
+			$this->notice( $postId, 'error', $e->getMessage() );
+		}
+	}
+
+	private function doCombinedStamp( int $postId ): void {
+		$sender = $this->sender();
+		if ( $sender === null ) {
+			$this->notice( $postId, 'error', __( 'Credenciais do SignDocs não configuradas.', 'signdocs-brasil' ) );
+			return;
+		}
+
+		try {
+			$result = $sender->refreshCombinedStamp( $postId );
+			$this->notice(
+				$postId,
+				'success',
+				sprintf(
+					/* translators: %d: number of signers in the combined document. */
+					__( 'PDF combinado gerado com %d signatários. O link está abaixo.', 'signdocs-brasil' ),
+					$result['signerCount']
+				)
+			);
+		} catch ( \Throwable $e ) {
+			Logger::error( 'envelope.combined_stamp', 'Combined stamp failed', array( 'postId' => $postId, 'error' => $e->getMessage() ) );
+			$this->notice( $postId, 'error', $e->getMessage() );
+		}
+	}
+
+	private function sender(): ?EnvelopeSender {
+		$client = \Signdocs_Client_Factory::get_client();
+		if ( $client === null ) {
+			return null;
+		}
+		return new EnvelopeSender( new EnvelopeService( $client ) );
 	}
 
 	/**
@@ -114,14 +187,13 @@ final class EnvelopeSaveHandler {
 			return;
 		}
 
-		$client = \Signdocs_Client_Factory::get_client();
-		if ( $client === null ) {
+		$sender = $this->sender();
+		if ( $sender === null ) {
 			$this->notice( $postId, 'error', __( 'Credenciais do SignDocs não configuradas.', 'signdocs-brasil' ) );
 			return;
 		}
 
 		try {
-			$sender = new EnvelopeSender( new EnvelopeService( $client ) );
 			$result = $sender->send( $postId, $draft, $docId, $policy );
 
 			$this->notice(
