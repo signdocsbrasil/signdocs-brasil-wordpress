@@ -13,5 +13,18 @@ parameters:
         - src/Cli/*
     bootstrapFiles:
         - vendor/autoload.php
+    # The plugin's own constants are define()d in the root bootstrap file,
+    # which is not in `paths` because it is not worth analysing. Scanning it
+    # lets phpstan discover SIGNDOCS_VERSION / SIGNDOCS_PLUGIN_URL without
+    # having to ignore every use of them.
+    scanFiles:
+        - signdocs-brasil.php
     ignoreErrors:
-        # (empty — add as needed)
+        # SIGNDOCS_PLUGIN_URL is define()d as plugin_dir_url(__FILE__), which
+        # phpstan cannot evaluate while scanning, so the constant never gets
+        # registered even though the file is in scanFiles. SIGNDOCS_VERSION,
+        # a literal, resolves fine. Scoped to the constant rather than blanket
+        # "Constant .* not found" so a genuine typo still fails.
+        -
+            message: '#Constant SIGNDOCS_PLUGIN_URL not found\.#'
+            path: src/*
