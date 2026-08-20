@@ -6,6 +6,7 @@ use SignDocsBrasil\Api\Models\CreateSigningSessionRequest;
 use SignDocsBrasil\Api\Models\Owner;
 use SignDocsBrasil\Api\Models\Policy;
 use SignDocsBrasil\Api\Models\Signer;
+use SignDocsBrasil\WordPress\Support\IdempotencyKey;
 use SignDocsBrasil\WordPress\Support\SigningUrl;
 
 /**
@@ -174,7 +175,22 @@ final class Signdocs_Ajax
                 owner: $owner,
             );
 
-            $session = $client->signingSessions->create($request);
+            // The button is the double-click case IdempotencyKey was written
+            // for: two clicks, or a click plus a browser retry after a slow
+            // response, previously created two sessions and charged twice.
+            // Keyed by user as well as by document and signer, so two
+            // administrators preparing the same document do not collide.
+            $session = $client->signingSessions->create(
+                $request,
+                IdempotencyKey::forAction(
+                    'session.create',
+                    [
+                        'source'   => $source,
+                        'document' => $document_id,
+                        'signer'   => $signer_email,
+                    ]
+                )
+            );
 
             // Create CPT post to track this signing
             $post_id = wp_insert_post([

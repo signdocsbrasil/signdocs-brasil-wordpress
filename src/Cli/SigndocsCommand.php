@@ -9,6 +9,7 @@ use SignDocsBrasil\Api\Models\Signer;
 use SignDocsBrasil\Api\Models\Policy;
 use SignDocsBrasil\WordPress\Admin\AuditQuery;
 use SignDocsBrasil\WordPress\Admin\Filters;
+use SignDocsBrasil\WordPress\Support\IdempotencyKey;
 use SignDocsBrasil\WordPress\Support\SigningUrl;
 
 /**
@@ -126,7 +127,22 @@ final class SigndocsCommand {
 					'filename' => basename( $filePath ),
 				),
 			);
-			$session = $client->signingSessions->create( $request );
+			// Re-running the same command — after a timeout, or from a shell
+			// script that retries — replays the first result instead of
+			// signing the document twice. Keyed on the file's contents rather
+			// than its path, so the same PDF under a different name still
+			// deduplicates, and a genuinely different document never does.
+			// forResource: the CLI has no logged-in user to scope to.
+			$session = $client->signingSessions->create(
+				$request,
+				IdempotencyKey::forResource(
+					'cli.session.create',
+					array(
+						'doc'    => substr( hash( 'sha256', $pdfContent ), 0, 16 ),
+						'signer' => $email,
+					)
+				)
+			);
 
 			// The base URL alone is NOT usable — it requires the embed token
 			// (clientSecret) appended as the `cs` query parameter.

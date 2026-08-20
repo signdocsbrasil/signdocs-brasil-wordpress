@@ -6,6 +6,7 @@ use SignDocsBrasil\Api\Models\CreateSigningSessionRequest;
 use SignDocsBrasil\Api\Models\Owner;
 use SignDocsBrasil\Api\Models\Policy;
 use SignDocsBrasil\Api\Models\Signer;
+use SignDocsBrasil\WordPress\Support\IdempotencyKey;
 use SignDocsBrasil\WordPress\Support\SigningUrl;
 
 /**
@@ -129,8 +130,38 @@ final class Signdocs_WooCommerce
         }
     }
 
+    /**
+     * Order meta holding document_id => session_id for every signing this
+     * order has already produced.
+     *
+     * `_signdocs_session_id` cannot serve as the guard: it is a single value
+     * that each signing overwrites, so an order containing two signable
+     * products only ever remembers the last one.
+     */
+    private const CREATED_SESSIONS_META = '_signdocs_wc_sessions';
+
+    /**
+     * @return array<string,string> document_id => session_id
+     */
+    private function created_sessions(\WC_Order $order): array
+    {
+        $raw = $order->get_meta(self::CREATED_SESSIONS_META);
+        return is_array($raw) ? $raw : [];
+    }
+
     private function create_signing_for_order(\WC_Order $order, int $document_id, string $policy): void
     {
+        // `woocommerce_order_status_completed` is not a once-per-order event.
+        // An administrator moving an order out of completed and back, a bulk
+        // status re-apply, or a gateway callback re-firing the transition all
+        // reach here again — and without this each one bought another
+        // signature, spent quota again, and mailed the customer a second link
+        // for a document they had already been asked to sign.
+        $created = $this->created_sessions($order);
+        if (isset($created[(string) $document_id])) {
+            return;
+        }
+
         $client = Signdocs_Client_Factory::get_client();
         if ($client === null) {
             $order->add_order_note(__('SignDocs: Falha ao criar sessão — credenciais não configuradas.', 'signdocs-brasil'));
@@ -208,12 +239,30 @@ final class Signdocs_WooCommerce
                 owner: $owner,
             );
 
-            $session = $client->signingSessions->create($request);
+            // Backs up the local guard above rather than replacing it. The
+            // guard cannot see a second attempt that is already in flight, and
+            // it is written only after this call returns — two concurrent
+            // transitions both read "not yet created". forResource, not
+            // forAction: whoever moved the order varies, and folding that
+            // identity in would give each of them a different key for the same
+            // work.
+            $session = $client->signingSessions->create(
+                $request,
+                IdempotencyKey::forResource(
+                    'wc.order.signing',
+                    [
+                        'order'    => $order->get_id(),
+                        'document' => $document_id,
+                    ]
+                )
+            );
 
             // Store the *assembled* signing URL on the order. `$session->url`
             // alone 400s — it needs the embed token as `?cs=`. See SigningUrl.
             $signing_url = SigningUrl::fromSession($session);
 
+            $created[(string) $document_id] = (string) ($session->sessionId ?? '');
+            $order->update_meta_data(self::CREATED_SESSIONS_META, $created);
             $order->update_meta_data('_signdocs_session_url', $signing_url);
             $order->update_meta_data('_signdocs_session_id', $session->sessionId ?? '');
             $order->save();
