@@ -362,24 +362,7 @@ final class Signdocs_Settings
         }
 
         try {
-            $result = $client->webhooks->register(
-                new \SignDocsBrasil\Api\Models\RegisterWebhookRequest(
-                    url: rest_url('signdocs/v1/webhook'),
-                    // Envelope events are subscribed alongside the transaction
-                    // ones: an envelope's member sessions emit TRANSACTION.*,
-                    // which keeps each signer current, but only ENVELOPE.*
-                    // reports the envelope's own terminal state and carries the
-                    // combined-stamp download URL.
-                    events: [
-                        'TRANSACTION.COMPLETED',
-                        'TRANSACTION.CANCELLED',
-                        'TRANSACTION.EXPIRED',
-                        'ENVELOPE.ALL_SIGNED',
-                        'ENVELOPE.CANCELLED',
-                        'ENVELOPE.EXPIRED',
-                    ],
-                ),
-            );
+            $result = $this->register_webhook_replacing_stale($client, rest_url('signdocs/v1/webhook'));
 
             if (!empty($result->secret)) {
                 update_option('signdocs_webhook_secret_enc', Signdocs_Credentials::encrypt($result->secret));
@@ -389,6 +372,74 @@ final class Signdocs_Settings
         } catch (\Throwable $e) {
             wp_send_json_error(['message' => esc_html($e->getMessage())]);
         }
+    }
+
+    /**
+     * Register the webhook, replacing a stale registration for the same URL.
+     *
+     * The API refuses to register a URL it already holds, so that a re-clicked
+     * registration cannot permanently double a tenant's inbound event volume.
+     * That is right, and it leaves this button with no way forward: the only
+     * copy of the signing secret lives in this site's options, and if that is
+     * lost — a migration, a restored backup, a re-install — the admin can
+     * neither re-register nor recover the secret, and every delivery then
+     * fails signature verification with nothing in the UI to fix it.
+     *
+     * The existing registration cannot be adopted, because the API returns its
+     * id but never its secret. So it is deleted and a new one created. What
+     * makes deleting safe is that the row is found by matching this site's own
+     * REST endpoint: a tenant may hold webhooks for other sites, and those are
+     * never touched. The conflict is resolved by listing rather than by
+     * reading an id out of the error text, so a reworded message cannot turn
+     * this into a delete of the wrong thing.
+     */
+    private function register_webhook_replacing_stale(
+        \SignDocsBrasil\Api\SignDocsBrasilClient $client,
+        string $url
+    ): \SignDocsBrasil\Api\Models\RegisterWebhookResponse {
+        $request = new \SignDocsBrasil\Api\Models\RegisterWebhookRequest(
+            url: $url,
+            // Envelope events are subscribed alongside the transaction ones: an
+            // envelope's member sessions emit TRANSACTION.*, which keeps each
+            // signer current, but only ENVELOPE.* reports the envelope's own
+            // terminal state and carries the combined-stamp download URL.
+            events: [
+                'TRANSACTION.COMPLETED',
+                'TRANSACTION.CANCELLED',
+                'TRANSACTION.EXPIRED',
+                'ENVELOPE.ALL_SIGNED',
+                'ENVELOPE.CANCELLED',
+                'ENVELOPE.EXPIRED',
+            ],
+        );
+
+        try {
+            return $client->webhooks->register($request);
+        } catch (\SignDocsBrasil\Api\Errors\ConflictException $e) {
+            $stale = self::find_webhook_id_for_url($client->webhooks->list(), $url);
+            if ($stale === null) {
+                // A 409 that is not a registration for this exact URL.
+                // Deleting something on a guess would be worse than failing,
+                // so surface the API's own explanation instead.
+                throw $e;
+            }
+
+            $client->webhooks->delete($stale);
+            return $client->webhooks->register($request);
+        }
+    }
+
+    /**
+     * @param array<int, \SignDocsBrasil\Api\Models\Webhook> $webhooks
+     */
+    public static function find_webhook_id_for_url(array $webhooks, string $url): ?string
+    {
+        foreach ($webhooks as $webhook) {
+            if (untrailingslashit($webhook->url) === untrailingslashit($url)) {
+                return $webhook->webhookId;
+            }
+        }
+        return null;
     }
 
     // --- Helpers ---
