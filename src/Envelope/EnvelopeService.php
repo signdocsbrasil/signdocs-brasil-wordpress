@@ -62,7 +62,7 @@ final class EnvelopeService {
 			owner: $owner,
 		);
 
-		$idempotencyKey = IdempotencyKey::forAction(
+		$idempotencyKey = IdempotencyKey::forResource(
 			'envelope.create',
 			array(
 				'signingMode'  => $signingMode,
@@ -83,6 +83,15 @@ final class EnvelopeService {
 	/**
 	 * Add a signing session to an envelope.
 	 */
+	/**
+	 * Add a signing session to an envelope.
+	 *
+	 * The key must differ per signer. The API scopes its cache by key and
+	 * resolved path, and every signer on an envelope shares that path, so one
+	 * key reused across them would return the first signer's session — client
+	 * secret included — for all of them. Derived here rather than left to the
+	 * caller so that cannot be got wrong at a call site.
+	 */
 	public function addSession(
 		string $envelopeId,
 		int $signerIndex,
@@ -101,7 +110,15 @@ final class EnvelopeService {
 			policy: new Policy( profile: $policyProfile ?? 'CLICK_ONLY' ),
 			signerIndex: $signerIndex,
 		);
-		return $this->client->envelopes->addSession( $envelopeId, $request );
+		$idempotencyKey = IdempotencyKey::forResource(
+			'envelope.addSession',
+			array(
+				'envelope' => $envelopeId,
+				'signer'   => $signerIndex,
+			)
+		);
+
+		return $this->client->envelopes->addSession( $envelopeId, $request, $idempotencyKey );
 	}
 
 	public function combinedStamp( string $envelopeId ): mixed {
