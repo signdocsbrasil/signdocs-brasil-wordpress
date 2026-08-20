@@ -25,6 +25,57 @@ final class IdempotencyKeyTest extends TestCase
         parent::tearDown();
     }
 
+    public function test_for_resource_ignores_who_is_acting(): void
+    {
+        // The whole point of forResource. An order-completed transition is
+        // reached by an administrator, a gateway callback, WP-Cron or a REST
+        // request depending on the shop, and each of those is a different
+        // current user — or none. If that changed the key, every route to the
+        // same order would create its own signing session, which is the
+        // duplicate this exists to prevent.
+        $asAdmin = IdempotencyKey::forResource('wc.order.signing', ['order' => 7, 'document' => 3]);
+
+        Functions\when('get_current_user_id')->justReturn(0);
+        $asCron = IdempotencyKey::forResource('wc.order.signing', ['order' => 7, 'document' => 3]);
+
+        Functions\when('get_current_user_id')->justReturn(999);
+        $asOtherAdmin = IdempotencyKey::forResource('wc.order.signing', ['order' => 7, 'document' => 3]);
+
+        $this->assertSame($asAdmin, $asCron);
+        $this->assertSame($asAdmin, $asOtherAdmin);
+    }
+
+    public function test_for_action_still_separates_users(): void
+    {
+        // The counterpart property: a per-user action must stay per-user, so
+        // two administrators clicking the same button do not read back one
+        // another's cached session.
+        $asUser42 = IdempotencyKey::forAction('session.create', ['document' => 3]);
+
+        Functions\when('get_current_user_id')->justReturn(43);
+        $asUser43 = IdempotencyKey::forAction('session.create', ['document' => 3]);
+
+        $this->assertNotSame($asUser42, $asUser43);
+    }
+
+    public function test_for_resource_separates_documents_on_one_order(): void
+    {
+        // An order can carry more than one signable product; each needs its
+        // own session, so the document has to be part of the key.
+        $docA = IdempotencyKey::forResource('wc.order.signing', ['order' => 7, 'document' => 3]);
+        $docB = IdempotencyKey::forResource('wc.order.signing', ['order' => 7, 'document' => 4]);
+
+        $this->assertNotSame($docA, $docB);
+    }
+
+    public function test_for_resource_and_for_action_do_not_collide(): void
+    {
+        $resource = IdempotencyKey::forResource('same.action', ['a' => 1]);
+        $action = IdempotencyKey::forAction('same.action', ['a' => 1]);
+
+        $this->assertNotSame($resource, $action);
+    }
+
     public function test_same_inputs_yield_same_key(): void
     {
         $a = IdempotencyKey::forAction('create_session', ['document' => 'doc_1', 'signer' => 'a@b.com']);

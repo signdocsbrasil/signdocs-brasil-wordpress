@@ -20,6 +20,11 @@ namespace SignDocsBrasil\WordPress\Support;
 final class IdempotencyKey {
 
 	/**
+	 * A key for something a specific user is doing.
+	 *
+	 * The current user is part of the material, so two administrators clicking
+	 * the same button do not collide on one another's cached response.
+	 *
 	 * @param array<int|string,int|string|null> $parts
 	 */
 	public static function forAction( string $action, array $parts = array() ): string {
@@ -28,6 +33,28 @@ final class IdempotencyKey {
 			$userId = (int) \get_current_user_id();
 		}
 
+		return self::build( $action, $parts, (string) $userId );
+	}
+
+	/**
+	 * A key for something that belongs to a record rather than to a person.
+	 *
+	 * Deliberately excludes the current user. An order-driven flow is reached
+	 * by whoever or whatever moved the order — an administrator, a payment
+	 * gateway callback, WP-Cron, a REST request — and folding that identity in
+	 * would hand each of them a different key for the same piece of work, which
+	 * is exactly the duplicate this is meant to prevent.
+	 *
+	 * @param array<int|string,int|string|null> $parts
+	 */
+	public static function forResource( string $action, array $parts = array() ): string {
+		return self::build( $action, $parts, '-' );
+	}
+
+	/**
+	 * @param array<int|string,int|string|null> $parts
+	 */
+	private static function build( string $action, array $parts, string $actor ): string {
 		$siteUrl = '';
 		if ( function_exists( 'get_site_url' ) ) {
 			$siteUrl = (string) \get_site_url();
@@ -46,7 +73,7 @@ final class IdempotencyKey {
 			'|',
 			array(
 				$siteUrl,
-				(string) $userId,
+				$actor,
 				$action,
 				implode( ';', $canonicalParts ),
 			)
