@@ -6,6 +6,8 @@ use SignDocsBrasil\WordPress\Admin\AuditTable;
 use SignDocsBrasil\WordPress\Admin\VerifyPage;
 use SignDocsBrasil\WordPress\Auth\Capabilities;
 use SignDocsBrasil\WordPress\Cli\SigndocsCommand;
+use SignDocsBrasil\WordPress\Admin\EnvelopeMetaBox;
+use SignDocsBrasil\WordPress\Admin\EnvelopeSaveHandler;
 use SignDocsBrasil\WordPress\Cpt\EnvelopeCpt;
 use SignDocsBrasil\WordPress\Privacy\Eraser;
 use SignDocsBrasil\WordPress\Privacy\Exporter;
@@ -41,6 +43,13 @@ final class Signdocs_Plugin
 
         // v1.2.0: Envelope CPT + admin pages.
         (new EnvelopeCpt())->register();
+        // v1.4.0: the compose screen and send handler that make the CPT do
+        // something. Registered here rather than in EnvelopeCpt so the post
+        // type stays registerable on the front end without pulling in admin.
+        if (is_admin()) {
+            (new EnvelopeMetaBox())->register();
+            (new EnvelopeSaveHandler())->register();
+        }
         (new VerifyPage())->register();
         AuditTable::registerPage();
 
