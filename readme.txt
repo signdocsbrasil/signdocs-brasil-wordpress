@@ -5,7 +5,7 @@ Tags: electronic signature, digital signature, woocommerce, contracts, icp-brasi
 Requires at least: 6.0
 Tested up to: 6.9
 Requires PHP: 8.1
-Stable tag: 1.3.8
+Stable tag: 1.4.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -377,6 +377,20 @@ Yes. All user-facing strings are translatable (`signdocs-brasil` text domain) an
 
 == Changelog ==
 
+= 1.4.0 =
+
+Stops a completed WooCommerce order from being signed twice, and keys the other two signing paths.
+
+* **Re-completing a WooCommerce order created a second signing session.** `woocommerce_order_status_completed` is not a once-per-order event — an administrator moving an order out of completed and back, a bulk status re-apply, or a payment gateway re-firing the transition all reach the handler again. Each time, it bought another signature, spent quota again, and emailed the customer a second link for a document they had already been asked to sign. The order now records which documents it has already produced a session for and skips them.
+  * The guard is per document, not per order: `_signdocs_session_id` holds a single value that each signing overwrites, so an order containing two signable products only ever remembered the last one. A per-order guard would have silently stopped the second product being sent for signature.
+* **The three signing paths now send an idempotency key.** `POST /v1/signing-sessions` was called without one from the admin AJAX handler, the WooCommerce hook and `wp signdocs send`, so a double-clicked button, a browser retry after a slow response, or a re-run of the command created a second session and charged for it. The plugin has carried a deterministic key generator since 1.2.0 for exactly this, but it was only ever wired to an envelope code path that nothing calls.
+  * Admin and shortcode submissions are keyed per user, so two administrators preparing the same document do not read back one another's session.
+  * The WooCommerce and CLI paths are deliberately **not** keyed per user. An order transition is reached by an administrator, a gateway callback or WP-Cron depending on the shop, and the CLI has no logged-in user at all — folding that identity into the key would hand each route a different one for the same work, which is the duplicate being prevented.
+  * `wp signdocs send` keys on the file's contents rather than its path, so the same PDF under a different name still deduplicates and a genuinely different document never does.
+* **Updated the SignDocs Brasil PHP SDK from 1.4.0 to 1.11.0.** Seven minor releases, including the one that lets a caller pass an idempotency key on envelope sessions at all. Also brings envelope cancellation, the detached-signature download URL for non-PDF documents, and `signingSessions->link()`.
+
+**Upgrading:** no action required, and no database migration. Orders completed before this release carry no record of the sessions they already created, so the first re-completion of such an order is still deduplicated by the API for 24 hours after the original — but not beyond that. Orders completed from 1.4.0 on are guarded permanently.
+
 = 1.3.8 =
 
 Fixes a broken signing link in the WooCommerce flow.
@@ -528,6 +542,9 @@ Hardening release + alignment with SignDocs PHP SDK 1.3.0.
 * Trilingual: pt-BR, en, es
 
 == Upgrade Notice ==
+
+= 1.4.0 =
+Stops a re-completed WooCommerce order creating a second signing session and charging for it, and adds idempotency keys to the admin, WooCommerce and CLI signing paths. Recommended for every install, especially WooCommerce.
 
 = 1.3.8 =
 Fixes the WooCommerce order email delivering a signing link that returned an error: the session's embed token was missing from the URL. Recommended for every WooCommerce install. Links created before 1.3.8 cannot be repaired — resend those sessions.
