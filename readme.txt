@@ -5,7 +5,7 @@ Tags: electronic signature, digital signature, woocommerce, contracts, icp-brasi
 Requires at least: 6.0
 Tested up to: 6.9
 Requires PHP: 8.1
-Stable tag: 1.4.0
+Stable tag: 1.4.1
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -377,6 +377,16 @@ Yes. All user-facing strings are translatable (`signdocs-brasil` text domain) an
 
 == Changelog ==
 
+= 1.4.1 =
+
+Fixes a failed signing record passing silently.
+
+* **When the local record could not be written, nothing said so.** Both signing paths asked WordPress to create the tracking record and then checked the result with `is_wp_error()`. That check could never fire: `wp_insert_post()` reports failure by returning `0` unless it is explicitly asked for an error object, and `is_wp_error(0)` is false. Every field written afterwards was addressed to post ID `0`, where WordPress discards it.
+  * The effect was invisible and one-sided. The signing session existed and the signer could sign normally, but no record was kept — so the completion webhook had nothing to update, and the signature never appeared in the admin list. Nothing anywhere explained why.
+  * The WooCommerce path now records the failure as an order note, which is where anyone investigating a missing signature looks first. The signing session ID is included, so the signature can still be traced in the SignDocs dashboard. The order will not be reprocessed into a second charge — the guard added in 1.4.0 is saved before this point.
+  * The shortcode and block path logs the failure and reports the record ID as `0`. The request deliberately still succeeds: the session is live and the browser needs its credential to begin signing.
+* Only failures were affected. A signing whose record was created — the ordinary case — behaved correctly and still does.
+
 = 1.4.0 =
 
 Multi-signer envelopes now work, and a completed WooCommerce order can no longer be signed twice.
@@ -555,6 +565,9 @@ Hardening release + alignment with SignDocs PHP SDK 1.3.0.
 * Trilingual: pt-BR, en, es
 
 == Upgrade Notice ==
+
+= 1.4.1 =
+Fixes a silent failure: when the local tracking record could not be created, nothing reported it and the signature never appeared in the admin list, even though signing itself worked. Only affected failures, not ordinary signings.
 
 = 1.4.0 =
 Multi-signer envelopes now actually work — the admin screen existed but nothing was wired to it. Also stops a re-completed WooCommerce order creating a second signing session and charging for it. Recommended for every install. Re-register your webhook in Settings to receive envelope events.
