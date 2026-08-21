@@ -7,6 +7,7 @@ use SignDocsBrasil\Api\Models\Owner;
 use SignDocsBrasil\Api\Models\Policy;
 use SignDocsBrasil\Api\Models\Signer;
 use SignDocsBrasil\WordPress\Support\IdempotencyKey;
+use SignDocsBrasil\WordPress\Support\Logger;
 use SignDocsBrasil\WordPress\Support\SigningUrl;
 
 /**
@@ -192,14 +193,31 @@ final class Signdocs_Ajax
                 )
             );
 
-            // Create CPT post to track this signing
+            // Create CPT post to track this signing. Second argument as in
+            // the WooCommerce path: without it a failure returns 0, the
+            // is_wp_error check below never fires, and the meta writes go to
+            // post ID 0 where they are discarded.
             $post_id = wp_insert_post([
                 'post_type' => Signdocs_CPT::POST_TYPE,
                 'post_title' => $signer_name . ' — ' . $filename,
                 'post_status' => 'publish',
-            ]);
+            ], true);
 
-            if (!is_wp_error($post_id)) {
+            if (is_wp_error($post_id)) {
+                Logger::error(
+                    'ajax.cpt_insert_failed',
+                    'Signing session created but the local record could not be written',
+                    [
+                        'sessionId' => $session->sessionId ?? '',
+                        'error' => $post_id->get_error_message(),
+                    ]
+                );
+                // Not fatal to the caller: the session is live and the browser
+                // needs the credential to start signing. Reported as 0 rather
+                // than the error object, which would otherwise be serialised
+                // into the JSON response as an opaque WP_Error shape.
+                $post_id = 0;
+            } else {
                 update_post_meta($post_id, '_signdocs_session_id', $session->sessionId ?? '');
                 update_post_meta($post_id, '_signdocs_transaction_id', $session->transactionId ?? '');
                 update_post_meta($post_id, '_signdocs_status', 'ACTIVE');

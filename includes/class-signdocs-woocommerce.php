@@ -267,14 +267,35 @@ final class Signdocs_WooCommerce
             $order->update_meta_data('_signdocs_session_id', $session->sessionId ?? '');
             $order->save();
 
-            // Create CPT post
+            // Create CPT post. The second argument is what makes the check
+            // below mean anything: without it wp_insert_post signals failure by
+            // returning 0, is_wp_error(0) is false, and every update_post_meta
+            // that follows runs against post ID 0 and is silently discarded —
+            // leaving a signing session live upstream with no local record, so
+            // the completion webhook finds nothing to update and the signing
+            // never appears in the admin list.
             $post_id = wp_insert_post([
                 'post_type' => Signdocs_CPT::POST_TYPE,
                 'post_title' => $signer_name . ' — Pedido #' . $order->get_order_number(),
                 'post_status' => 'publish',
-            ]);
+            ], true);
 
-            if (!is_wp_error($post_id)) {
+            if (is_wp_error($post_id)) {
+                // The session exists and the customer can sign; only the local
+                // mirror is missing. Recorded on the order because that is
+                // where somebody investigating a signature that never showed
+                // up will look, and because the re-entry guard was already
+                // saved above — so this will not be retried into a second
+                // charge.
+                $order->add_order_note(
+                    sprintf(
+                        /* translators: 1: SignDocs session ID, 2: WordPress error message */
+                        __('SignDocs: sessão %1$s criada, mas o registro local falhou (%2$s). A assinatura funciona; o acompanhamento no admin não.', 'signdocs-brasil'),
+                        $session->sessionId ?? '',
+                        $post_id->get_error_message()
+                    )
+                );
+            } else {
                 update_post_meta($post_id, '_signdocs_session_id', $session->sessionId ?? '');
                 update_post_meta($post_id, '_signdocs_transaction_id', $session->transactionId ?? '');
                 update_post_meta($post_id, '_signdocs_status', 'ACTIVE');
