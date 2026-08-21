@@ -45,7 +45,7 @@
     },
     "scripts": {
         "test": "phpunit",
-        "phpstan": "phpstan analyse src --level=6 --memory-limit=512M",
+        "phpstan": "phpstan analyse src --level=6 --memory-limit=2G",
         "phpcs": "phpcs --standard=phpcs.xml.dist src",
         "phpcbf": "phpcbf --standard=phpcs.xml.dist src"
     }
