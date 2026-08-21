@@ -9,13 +9,23 @@ use SignDocsBrasil\WordPress\Support\Logger;
 /**
  * Dispatches verified webhook payloads to per-event handlers.
  *
- * The OpenAPI spec at the time of writing (v1.1.0) declares 17 webhook
- * event types, but the deployed server only emits 13 of them — the 11
- * accepted at subscription registration plus the two NT65 events added
- * for the consignado INSS workflow. The four `SIGNING_SESSION.*`
- * variants are part of the spec but the server never emits them; the
- * lifecycle is communicated via the corresponding `TRANSACTION.*`
- * events instead. Spec cleanup is tracked separately.
+ * Which events actually arrive, verified against every `eventType:`
+ * assignment in the API source on 2026-08-21: the four `TRANSACTION.*`
+ * lifecycle events plus DEADLINE_APPROACHING and FALLBACK, the four
+ * `ENVELOPE.*`, the four `SIGNING_SESSION.*` plus its own FALLBACK, and
+ * STEP.PURPOSE_DISCLOSURE_SENT.
+ *
+ * `SIGNING_SESSION.*` fires alongside the corresponding `TRANSACTION.*`
+ * for the same lifecycle moment, so subscribing to both is redundant
+ * rather than wrong — this plugin subscribes to `TRANSACTION.*`. An
+ * earlier version of this comment claimed the server never emits them,
+ * which was false: SIGNING_SESSION.COMPLETED comes from
+ * services/transaction-finalizer.ts on a live path. Nothing depended on
+ * the claim, but it would have talked the next reader out of handling
+ * events that do arrive.
+ *
+ * `TRANSACTION.FAILED` is the one in the spec enum that genuinely never
+ * fires — a status the router therefore cannot receive.
  *
  * Handlers update the per-session CPT record (meta + status) and fire
  * WordPress actions for external code to subscribe to. The router
